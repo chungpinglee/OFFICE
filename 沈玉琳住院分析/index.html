@@ -38,11 +38,12 @@
             border: 2px solid transparent;
         }
 
+        /* 修正：滑鼠滑過時背景變綠色，文字變白色 */
         .product-card:hover {
             transform: translateY(-8px);
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            background-color: #10B981 !important;
-            border: 4px solid #F97316 !important;
+            background-color: #10B981 !important; /* 綠色背景 */
+            border: 2px solid #F97316 !important;
             backdrop-filter: none;
         }
 
@@ -50,6 +51,8 @@
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             transform-origin: left center;
         }
+        
+        /* 修正：滑鼠滑過時標題變白色 */
         .product-card:hover h3 {
             color: #FFFFFF !important;
             transform: scale(1.05);
@@ -60,8 +63,10 @@
             font-size: 0.75rem;
             line-height: 1.6;
         }
+
+        /* 修正：滑鼠滑過時內文變白色 */
         .product-card:hover p {
-            color: rgba(255, 255, 255, 1) !important;
+            color: #FFFFFF !important;
             font-size: 0.85rem;
         }
 
@@ -162,7 +167,6 @@
             <h2 class="text-2xl font-bold mb-10 text-center text-white">幾種不同類型住院日額險提供您參考</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
-                <!-- WEHS 區塊：更新簡報按鈕連結為雲端硬碟網址 -->
                 <div class="nordic-card product-card p-6 rounded-2xl flex flex-col">
                     <h3 class="font-bold mb-3 text-slate-800">WEHS-實健溢百住院醫療終身保險 (74歲後轉向實支實付)</h3>
                     <p class="text-slate-500 leading-relaxed mb-6 flex-grow">
@@ -181,7 +185,6 @@
                             <a href="https://youtu.be/TwlRBGnL6xw?si=oPs5ldNu1Ot26-yd_" target="_blank" class="py-3 bg-red-50 text-red-600 text-center rounded-xl font-bold hover:scale-105 transition-all text-[10px] border border-red-100 flex items-center justify-center">
                                 實支實付說明
                             </a>
-                            <!-- 更新簡報按鈕連結網址 -->
                             <a href="https://drive.google.com/file/d/1Ir9W_GJZLLVdSxZPqOI14ebVE7qVOB1k/view?usp=drive_link" target="_blank" class="py-3 bg-orange-50 text-orange-600 text-center rounded-xl font-bold hover:scale-105 transition-all text-[10px] border border-orange-100 flex items-center justify-center">
                                 WEHS-簡報
                             </a>
@@ -254,16 +257,16 @@
                     </div>
                 </div>
 
-                <div class="nordic-card product-card p-6 rounded-2xl flex flex-col bg-slate-800 text-white border-transparent">
-                    <h3 class="font-bold mb-3 text-white">HYPHI-住院日額終身 (身故時退全部已繳保費)</h3>
-                    <p class="text-slate-300 leading-relaxed mb-6 flex-grow">
+                <div class="nordic-card product-card p-6 rounded-2xl flex flex-col">
+                    <h3 class="font-bold mb-3 text-slate-800">HYPHI-住院日額終身 (身故時退全部已繳保費)</h3>
+                    <p class="text-slate-500 leading-relaxed mb-6 flex-grow">
                         最高等級保障。身故退還總繳保費且理賠不扣除，兼具醫療保障與資產保全。
                     </p>
                     <div class="grid grid-cols-2 gap-2">
-                        <a href="HYPHI-商品簡介-2026年1月版.pdf" target="_blank" class="py-3 bg-white text-slate-800 text-center rounded-xl font-bold hover:scale-105 transition-all text-[10px] flex items-center justify-center">
+                        <a href="HYPHI-商品簡介-2026年1月版.pdf" target="_blank" class="py-3 bg-slate-800 text-white text-center rounded-xl font-bold hover:scale-105 transition-all text-[10px] flex items-center justify-center">
                             商品簡介
                         </a>
-                        <a href="https://drive.google.com/file/d/1bsIjAHsp0w-YQAJxE7yNowp83Ozvp1qI/view?usp=drive_link" target="_blank" class="py-3 bg-slate-700 text-white text-center rounded-xl font-bold hover:scale-105 transition-all text-[10px] border border-slate-600 flex items-center justify-center">
+                        <a href="https://drive.google.com/file/d/1bsIjAHsp0w-YQAJxE7yNowp83Ozvp1qI/view?usp=drive_link" target="_blank" class="py-3 bg-slate-100 text-slate-600 text-center rounded-xl font-bold hover:scale-105 transition-all text-[10px] border border-slate-200 flex items-center justify-center">
                             影音說明
                         </a>
                     </div>
