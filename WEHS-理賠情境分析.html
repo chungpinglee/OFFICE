@@ -119,10 +119,9 @@
 
         <!-- Toolbar Section -->
         <div class="bg-white rounded-2xl shadow-xl border border-gray-100 p-5 mb-8 relative">
-            <!-- 使用 flex-col 讓計畫數與年期在年齡上方 -->
             <div class="flex flex-col gap-6">
                 
-                <!-- 第一列: 計畫數與繳費期間 (文字顏色改為灰色) -->
+                <!-- 第一列: 計畫數與繳費期間 -->
                 <div class="flex flex-wrap items-end gap-6">
                     <div class="w-full md:w-auto">
                         <label class="block text-xs font-bold text-gray-500 mb-2">投保計畫數</label>
@@ -145,7 +144,6 @@
 
                 <!-- 第二列: 假設投保年齡與性別 -->
                 <div class="flex flex-wrap items-end gap-6">
-                    <!-- 1. Age (選單模式 - 已放大 20%) -->
                     <div class="w-full md:w-72">
                         <label class="block text-sm mb-2 uppercase age-label-custom">請選擇假設投保時的年齡</label>
                         <div id="ageInputContainer" class="flex items-center border-2 border-gray-200 rounded-xl px-4 py-3 bg-white focus-within:ring-2 focus-within:ring-green-500 focus-within:border-green-500 transition-all shadow-sm">
@@ -153,11 +151,9 @@
                             <select id="directAge" class="w-full outline-none font-black text-blue-600 bg-transparent text-2xl text-center cursor-pointer">
                                 <!-- 由 JS 動態生成選項 -->
                             </select>
-                            <span id="ageSuffixTag" class="text-sm font-bold text-black ml-2 whitespace-nowrap"></span>
                         </div>
                     </div>
 
-                    <!-- 2. Gender -->
                     <div class="w-full md:w-auto">
                         <label class="block text-xs font-bold text-gray-400 mb-2">性別選擇</label>
                         <div class="flex gap-2 p-1 bg-gray-100 rounded-xl w-full" id="genderButtons">
@@ -166,7 +162,6 @@
                         </div>
                     </div>
 
-                    <!-- Premium Summary (右側摘要) -->
                     <div class="w-full md:w-auto flex items-center gap-3 md:border-l md:pl-6 border-gray-200 pt-4 md:pt-0">
                         <div id="resMaleBox" class="flex-1 md:w-32 bg-blue-50 px-3 py-3 rounded-xl border-l-4 border-blue-800 shadow-sm transition-all">
                             <span id="maleLabel" class="text-[10px] font-black text-blue-900 block uppercase mb-1">男性年繳</span>
@@ -176,7 +171,6 @@
                             <span id="femaleLabel" class="text-[10px] font-black text-orange-700 block uppercase mb-1">女性年繳</span>
                             <div id="femalePremium" class="text-lg font-black text-gray-900">--</div>
                         </div>
-                        <!-- 費率表按鈕 -->
                         <button onclick="toggleTableVisibility()" id="toggleBtn" class="flex items-center gap-2 px-4 py-3 bg-gray-800 text-white rounded-xl hover:bg-green-600 transition-all shadow-lg">
                             <span class="text-xs font-bold">費率表展開/關閉</span>
                             <svg id="toggleIcon" class="w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -195,7 +189,8 @@
                     <div class="w-2 h-8 bg-blue-700 rounded-full"></div>
                     <h2 class="text-xl font-black text-gray-800">理賠案例分析 <span id="dynamicCaseLabel" class="text-sm font-bold text-gray-500 ml-2 rounded-lg transition-all"></span></h2>
                 </div>
-                <button onclick="expandAllCases()" id="expandAllBtn" class="px-5 py-2 bg-blue-600 text-white rounded-full text-sm font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95">展開案例</button>
+                <!-- 展開案例按鈕樣式修改 -->
+                <button onclick="expandAllCases()" id="expandAllBtn" class="px-5 py-2 bg-white text-blue-600 border-[3px] border-blue-600 rounded-full text-sm font-black hover:bg-blue-600 hover:text-white transition-all shadow-md active:scale-95">展開全部案例</button>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -284,7 +279,8 @@
                 <table class="w-full text-center border-collapse min-w-[800px]">
                     <thead>
                         <tr class="bg-gray-800 text-white text-xs">
-                            <th class="py-4 px-4 border-b font-bold sticky left-0 bg-gray-800 z-10" rowspan="2">保險年齡</th>
+                            <!-- 欄位寬度縮小 -->
+                            <th class="py-4 px-2 border-b font-bold sticky left-0 bg-gray-800 z-10 w-16" rowspan="2">年齡</th>
                             <th class="py-4 border-b font-bold border-l border-gray-700" colspan="3">男性 (計劃 10/20/30)</th>
                             <th class="py-4 border-b font-bold border-l border-gray-700 bg-pink-900" colspan="3">女性 (計劃 10/20/30)</th>
                         </tr>
@@ -302,40 +298,30 @@
     <script>
         const rates = {
             10: { male: { 0:[33930,59500,85230], 5:[37480,65250,93630], 10:[40990,70950,101990], 15:[46640,80300,115190], 20:[52300,89630,128380], 25:[58400,99330,141430], 30:[64470,109030,154480], 35:[72020,120580,170180], 40:[79590,132130,185920], 45:[90020,146200,205920], 50:[102600,162360,227210], 55:[116920,181530,253770], 60:[134260,205060,286580], 65:[149450,228990,319080], 70:[165550,254820,353300] }, female: { 0:[34170,59550,85600], 5:[37670,65250,93800], 10:[41170,70990,102020], 15:[46470,79540,112670], 20:[51770,88050,123340], 25:[57270,96750,133840], 30:[62760,105400,144340], 35:[67760,111400,155340], 40:[72710,117430,166380], 45:[80630,129270,182000], 50:[88160,141800,197830], 55:[97420,156290,218510], 60:[108140,173820,243660], 65:[117400,186790,266660], 70:[132200,203450,290990] } },
-            20: { male: { 0:[18750,32880,47350], 5:[20700,36030,52000], 10:[22650,39210,56660], 15:[25800,44360,64010], 20:[28900,49530,71320], 25:[33000,56080,79570], 30:[37050,62660,87770], 35:[39900,66860,92820], 40:[42790,71040,97850], 45:[48500,78770,109880], 50:[55100,87760,123080], 55:[63200,98660,138370], 60:[78560,119990,170990] }, female: { 0:[18880,32910,47820], 5:[20830,36060,52270], 10:[22750,39230,56680], 15:[25700,43580,62880], 20:[28610,47.960,69060], 25:[32260,52610,74610], 30:[35860,57280,80190], 35:[37660,59230,84540], 40:[39500,61160,88880], 45:[43800,67330,97430], 50:[48440,74630,104670], 55:[54120,82260,115370], 60:[62150,94470,134620] } },
+            20: { male: { 0:[18750,32880,47350], 5:[20700,36030,52000], 10:[22650,39210,56660], 15:[25800,44360,64010], 20:[28900,49530,71320], 25:[33000,56080,79570], 30:[37050,62660,87770], 35:[39900,66860,92820], 40:[42790,71040,97850], 45:[48500,78770,109880], 50:[55100,87760,123080], 55:[63200,98660,138370], 60:[78560,119990,170990] }, female: { 0:[18880,32910,47820], 5:[20830,36060,52270], 10:[22750,39230,56680], 15:[25700,43580,62880], 20:[28610,47960,69060], 25:[32260,52610,74610], 30:[35860,57280,80190], 35:[37660,59230,84540], 40:[39500,61160,88880], 45:[43800,67330,97430], 50:[48440,74630,104670], 55:[54120,82260,115370], 60:[62150,94470,134620] } },
             30: { male: { 0:[13630,23890,34090], 5:[15030,26190,37340], 10:[16460,28490,40610], 15:[18260,31740,45260], 20:[20080,35000,49920], 25:[23030,39650,56220], 30:[25940,44320,62550], 35:[29640,49970,67150], 40:[33380,55650,71760], 45:[38150,61970,80580], 50:[44080,70210,97640] }, female: { 0:[13720,23910,34270], 5:[15120,26210,37470], 10:[16530,28510,40620], 15:[18230,31160,44470], 20:[19880,33800,48340], 25:[22480,37100,52640], 30:[25100,40400,56930], 35:[27150,44050,62230], 40:[29230,47700,67550], 45:[32700,52290,74050], 50:[37300,57960,82340] } }
         };
 
         let currentGender = 'male', currentPlan = 20, currentPeriod = 20, highlightedAge = 0, isTableVisible = false, isAgeExceeded = false;
 
         window.onload = () => {
-            updateAgeDropdownOptions(); // 先初始化下拉選單
+            updateAgeDropdownOptions();
             selectGender('male'); selectPlan(20); selectPeriod(20);
             document.getElementById('directAge')?.addEventListener('change', calculateFromDirectAge);
         };
 
-        // 更新投保年齡下拉選單選項 (根據繳費期間同步)
         function updateAgeDropdownOptions() {
             const ageSelect = document.getElementById('directAge');
             const prevVal = ageSelect.value;
             ageSelect.innerHTML = '';
-            
-            // 取得對應期間的所有費率年齡
             const ages = Object.keys(rates[currentPeriod].male).map(Number).sort((a,b)=>a-b);
-            
             ages.forEach(age => {
                 const opt = document.createElement('option');
                 opt.value = age;
-                opt.textContent = age + ' 歲'; // 在選單文字中加入「歲」
+                opt.textContent = age + ' 歲';
                 ageSelect.appendChild(opt);
             });
-
-            // 盡可能恢復先前的選取值
-            if (prevVal && ages.includes(parseInt(prevVal))) {
-                ageSelect.value = prevVal;
-            } else {
-                ageSelect.value = ages[0];
-            }
+            if (prevVal && ages.includes(parseInt(prevVal))) { ageSelect.value = prevVal; } else { ageSelect.value = ages[0]; }
         }
 
         function toggleCase(caseId) {
@@ -386,8 +372,7 @@
         function selectPeriod(period) {
             currentPeriod = period;
             document.querySelectorAll('.period-btn').forEach(btn => btn.className = `period-btn btn-base flex-1 py-2 rounded-lg text-sm font-bold ${parseInt(btn.dataset.period) === period ? 'active-period' : ''}`);
-            
-            updateAgeDropdownOptions(); // 切換期間時同步更新可選年齡
+            updateAgeDropdownOptions();
             switchTable(period);
             triggerRecalculation();
         }
@@ -395,12 +380,9 @@
         function updateUIVisuals() {
             const ageVal = parseInt(document.getElementById('directAge').value) || 0;
             const max = { 10: 70, 20: 60, 30: 50 }[currentPeriod];
-            
             const ageContainer = document.getElementById('ageInputContainer');
             const ageInput = document.getElementById('directAge');
             const ageLabel = document.getElementById('ageLabelTag');
-            const ageSuffix = document.getElementById('ageSuffixTag');
-
             const mBox = document.getElementById('resMaleBox');
             const fBox = document.getElementById('resFemaleBox');
             const mLabel = document.getElementById('maleLabel');
@@ -413,18 +395,15 @@
                 ageContainer.style.backgroundColor = '#fee2e2'; 
                 ageInput.style.color = '#dc2626';
                 ageLabel.style.color = '#dc2626';
-                ageSuffix.style.color = '#dc2626';
                 mBox.style.backgroundColor = '#ef4444'; mBox.style.borderColor = '#b91c1c';
                 fBox.style.backgroundColor = '#ef4444'; fBox.style.borderColor = '#b91c1c';
                 [mLabel, fLabel, mVal, fVal].forEach(el => el.style.color = 'white');
-                mBox.style.opacity = '1';
-                fBox.style.opacity = '1';
+                mBox.style.opacity = '1'; fBox.style.opacity = '1';
             } else {
                 isAgeExceeded = false;
                 ageContainer.style.backgroundColor = 'white';
                 ageInput.style.color = '#2563eb'; 
                 ageLabel.style.color = 'black';
-                ageSuffix.style.color = 'black';
                 mBox.style.backgroundColor = '#eff6ff'; mBox.style.borderColor = '#1e3a8a';
                 fBox.style.backgroundColor = '#fff7ed'; fBox.style.borderColor = '#ea580c';
                 mLabel.style.color = '#1e3a8a'; mVal.style.color = '#111827';
@@ -439,7 +418,6 @@
             const fmt = (n) => '$' + n.toLocaleString();
             const getDiffClass = (val) => val < 0 ? 'negative-val' : 'text-green-600';
             const setSafeHTML = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-
             const ageVal = parseInt(document.getElementById('directAge').value) || 0;
             const dynamicLabel = document.getElementById('dynamicCaseLabel');
             const max = { 10: 70, 20: 60, 30: 50 }[currentPeriod];
@@ -453,7 +431,6 @@
                 }
                 ['caseA', 'caseC', 'caseB', 'caseD'].forEach(id => {
                     document.getElementById(id + '_content')?.classList.add('hidden');
-                    document.getElementById(id + '_icon')?.classList.remove('rotate-180');
                     document.getElementById('header' + id.slice(-1))?.classList.add('disabled');
                 });
             } else {
@@ -509,8 +486,6 @@
         function updatePremiums(age) {
             const mDisp = document.getElementById('malePremium'), fDisp = document.getElementById('femalePremium');
             const max = { 10: 70, 20: 60, 30: 50 }[currentPeriod];
-            
-            // 下拉選單中已經過濾，但為了安全起見還是做檢查
             if (age < 0 || age > max) {
                 mDisp.innerText = '--'; fDisp.innerText = '--';
                 highlightedAge = null; renderTable(currentPeriod); updateClaimCases();
@@ -565,7 +540,9 @@
                     const base = gender === 'female' ? (idx === 0 ? 'border-l border-gray-100 bg-pink-50/50' : 'bg-pink-50/50') : (idx === 0 ? 'border-l border-gray-100' : '');
                     return `<td class="py-3 ${base} ${highlight}">${val.toLocaleString()}</td>`;
                 }).join('');
-                row.innerHTML = `<td class="py-3 px-4 font-bold bg-gray-50 text-gray-600 sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] text-left">保險年齡: ${age} 歲</td>${buildCells(rates[period].male[age], 'male')}${buildCells(rates[period].female[age], 'female')}`;
+                
+                // 簡化文字：改成 " 5 歲"
+                row.innerHTML = `<td class="py-3 px-2 font-bold bg-gray-50 text-gray-600 sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] text-center w-16">${age} 歲</td>${buildCells(rates[period].male[age], 'male')}${buildCells(rates[period].female[age], 'female')}`;
                 body.appendChild(row);
             });
         }
