@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>雲端互動測驗平台 - 穩定連線版</title>
+  <title>雲端互動測驗平台 - 穩定版 1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Babel (負責在瀏覽器編譯 JSX) -->
+  <!-- Babel (JSX 編譯器) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
   <style>
@@ -22,7 +22,7 @@
       transition: all 0.2s ease-in-out;
     }
     .btn-quiz-action:hover:not(:disabled) {
-      background-color: #064e3b !important; /* 深綠色 */
+      background-color: #064e3b !important; /* 深綠色綠色 */
       color: white !important;
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(6, 78, 59, 0.3);
@@ -58,10 +58,10 @@
     import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
     import { getFirestore, doc, setDoc, onSnapshot, collection, updateDoc, getDoc, getDocs } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-    // --- 固定 appId：這是連線穩定的關鍵，不隨版本更動 ---
-    const appId = 'music-quiz-stable-v1-production';
+    // --- 固定 appId：這是連線穩定的關鍵，避免老師學生路徑不一 ---
+    const appId = 'music-quiz-production-stable-v1';
 
-    // Firebase 配置 (musictest-1c0fb)
+    // Firebase 配置 (專案: musictest-1c0fb)
     const firebaseConfig = {
       apiKey: "AIzaSyC4jSIve5kj15hSptVFJ2hOdEjcQ0GsR6w",
       authDomain: "musictest-1c0fb.firebaseapp.com",
@@ -94,23 +94,21 @@
       const [authError, setAuthError] = useState('');
       
       const [quizBanks, setQuizBanks] = useState(() => {
-        const saved = localStorage.getItem('music_quiz_banks_permanent');
+        const saved = localStorage.getItem('secure_quiz_banks_permanent');
         return saved ? JSON.parse(saved) : {};
       });
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3000); };
 
-      // 1. 初始化驗證
       useEffect(() => {
         const init = async () => {
           try { await signInAnonymously(auth); } 
-          catch (e) { setAuthError("連線失敗：請確保 Firebase Console 已啟用「匿名登入」功能。"); }
+          catch (e) { setAuthError("連線失敗：請確保 Firebase Console 已啟用「匿名登入」。"); }
         };
         init();
         onAuthStateChanged(auth, setUser);
       }, []);
 
-      // 2. 監聽 Session 與 作答資料
       useEffect(() => {
         if (!user || !sessionCode) return;
         const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode);
@@ -122,21 +120,19 @@
             setSessionCode('');
             setErrorMsg('找不到該測驗代碼，或測驗已由教師結束。');
           }
-        }, (err) => console.error("Session Listen Error:", err));
+        }, (err) => console.error(err));
 
         const aRef = collection(db, 'artifacts', appId, 'public', 'data', 'answers');
         const unsubA = onSnapshot(aRef, (snap) => {
           const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           setAllAnswersData(docs.filter(a => a.sessionId === sessionCode));
-        }, (err) => console.error("Answers Listen Error:", err));
-
+        });
         return () => { unsubS(); unsubA(); };
       }, [user, sessionCode, role]);
 
-      // 3. 處理建立測驗
       const handleCreate = async () => {
         if (Object.keys(quizBanks).length === 0) {
-          setErrorMsg("請先點擊右側區塊匯入 JSON 題庫檔案，才能建立測驗。");
+          setErrorMsg("請先匯入 JSON 題庫檔案，才能建立測驗。");
           return;
         }
         const newCode = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -160,50 +156,36 @@
           });
           setSessionCode(newCode);
           setRole('instructor');
-        } catch (e) { 
-          console.error(e);
-          setErrorMsg("建立失敗，請檢查資料庫規則 (Rules) 是否已設為 allow read, write: if true;"); 
-        }
+        } catch (e) { setErrorMsg("建立失敗，請檢查網路連線。"); }
       };
 
-      // 4. 處理加入測驗
       const handleJoin = async (code, name) => {
-        if (!code || !name) return setErrorMsg('請完整填寫姓名與代碼');
+        if (!code || !name) return setErrorMsg('請填寫姓名與代碼');
         const c = code.trim().toUpperCase();
         const n = name.trim().replace(/[\/\.#$\[\]]/g, '_');
-        
         try {
           const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', c));
           if (!snap.exists()) {
-            setErrorMsg('找不到該測驗代碼，請確認老師是否已建立測驗室。');
-            return;
+             setErrorMsg('找不到該測驗代碼，請確認老師是否已建立測驗室。');
+             return;
           }
-          
           const studentId = `${user.uid}_${n}`;
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${c}_${studentId}`), {
-            sessionId: c,
-            studentId: studentId,
-            studentName: n,
-            answers: {},
-            score: 0,
-            joinedAt: Date.now()
+            sessionId: c, studentId: studentId, studentName: n, answers: {}, score: 0
           }, { merge: true });
-
           setSessionCode(c);
           setStudentName(n);
           setRole('student');
-        } catch (e) { 
-          setErrorMsg("加入失敗，請檢查網路連線。"); 
-        }
+        } catch (e) { setErrorMsg("加入失敗。"); }
       };
 
       if (authError) return <div className="h-screen flex items-center justify-center p-6 text-red-600 font-bold text-center bg-white">{authError}</div>;
-      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse">連線到雲端伺服器中...</div>;
+      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse">連線到伺服器中...</div>;
 
       return (
         <div className="min-h-screen flex flex-col">
           <header className="bg-indigo-900 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-50">
-            <h1 className="font-bold flex items-center gap-2 text-lg"><ListChecks /> 雲端互動測驗平台</h1>
+            <h1 className="font-bold flex items-center gap-2 text-lg"><ListChecks /> 雲端即時互動測驗系統</h1>
             {role && (
               <div className="bg-indigo-800 px-4 py-1.5 rounded-full flex gap-4 text-sm items-center">
                 <span className="hidden sm:inline">{role === 'instructor' ? '講師管理' : studentName}</span>
@@ -214,19 +196,28 @@
           </header>
 
           <main className="flex-1 max-w-6xl mx-auto p-4 md:p-8 w-full">
-            {!role && <RoleSelection onJoin={handleJoin} onCreate={handleCreate} onResume={(c)=>{setSessionCode(c.toUpperCase()); setRole('instructor');}} hasBanks={Object.keys(quizBanks).length > 0} onImport={(b)=>{setQuizBanks(b); localStorage.setItem('music_quiz_banks_permanent', JSON.stringify(b)); showToast('題庫載入成功');}} />}
+            {!role && <RoleSelection onJoin={handleJoin} onCreate={handleCreate} onResume={(c)=>{setSessionCode(c.toUpperCase()); setRole('instructor');}} hasBanks={Object.keys(quizBanks).length > 0} onImport={(b)=>{setQuizBanks(b); localStorage.setItem('secure_quiz_banks_permanent', JSON.stringify(b)); showToast('題庫載入成功');}} />}
             
             {role === 'instructor' && sessionData && (
               <InstructorView 
-                code={sessionCode} session={sessionData} students={allAnswersData} db={db} showToast={showToast} quizBanks={quizBanks} 
-                setQuizBanks={(b)=>{setQuizBanks(b); localStorage.setItem('music_quiz_banks_permanent', JSON.stringify(b));}} 
+                code={sessionCode} 
+                session={sessionData} 
+                students={allAnswersData} 
+                db={db} 
+                showToast={showToast} 
+                quizBanks={quizBanks} 
+                setQuizBanks={(b)=>{setQuizBanks(b); localStorage.setItem('secure_quiz_banks_permanent', JSON.stringify(b));}} 
               />
             )}
             
             {role === 'student' && sessionData && (
-              <StudentDashboard sessionData={sessionData} myData={allAnswersData.find(a => a.studentId === `${user.uid}_${studentName}`)} onAnswer={(idx, text) => {
-                updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`), { [`answers.${idx}`]: text });
-              }} />
+              <StudentDashboard 
+                sessionData={sessionData} 
+                myData={allAnswersData.find(a => a.studentId === `${user.uid}_${studentName}`)} 
+                onAnswer={(idx, text) => {
+                  updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`), { [`answers.${idx}`]: text });
+                }} 
+              />
             )}
           </main>
 
@@ -236,7 +227,6 @@
       );
     }
 
-    // --- 頁面元件：角色選擇 ---
     function RoleSelection({ onJoin, onCreate, onResume, hasBanks, onImport }) {
       const [code, setCode] = useState('');
       const [name, setName] = useState('');
@@ -255,7 +245,7 @@
         const reader = new FileReader();
         reader.onload = (ev) => {
           try { onImport(JSON.parse(ev.target.result)); } 
-          catch (err) { alert('JSON 格式錯誤，無法載入。'); }
+          catch (err) { alert('JSON 格式錯誤'); }
         };
         reader.readAsText(file);
       };
@@ -265,9 +255,9 @@
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
             <h2 className="text-2xl font-bold text-indigo-700 mb-6 flex items-center gap-2"><UserCircle /> 學生登入</h2>
             <div className="space-y-4">
-              <input type="text" placeholder="您的真實姓名" className="w-full p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" value={name} onChange={e => setName(e.target.value)} />
+              <input type="text" placeholder="您的真實姓名" className="w-full p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none" value={name} onChange={e => setName(e.target.value)} />
               <input type="text" placeholder="測驗代碼" className="w-full p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono tracking-widest uppercase" value={code} onChange={e => setCode(e.target.value)} />
-              <button onClick={() => onJoin(code, name)} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action transition-all">進入教室</button>
+              <button onClick={() => onJoin(code, name)} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action">進入測驗室</button>
             </div>
           </div>
 
@@ -276,7 +266,7 @@
               <div>
                 <h2 className="text-2xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Users /> 講師管理</h2>
                 <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 mb-6 text-center">
-                  <p className="text-xs font-bold text-indigo-600 mb-3 uppercase flex items-center justify-center gap-1 tracking-tighter"><Lock className="w-3 h-3"/> 安全機制：程式內無預設題目</p>
+                  <p className="text-xs font-bold text-indigo-600 mb-3 uppercase tracking-tighter flex items-center justify-center gap-1"><Lock className="w-3 h-3"/> 安全機制：程式內無預設題目</p>
                   {hasBanks ? (
                     <div className="flex items-center justify-center gap-2 text-green-600 font-bold text-sm bg-green-50 p-3 rounded-lg border border-green-200">
                        <CheckCircle className="w-4 h-4"/> 題庫已就緒，可建立測驗室
@@ -292,10 +282,10 @@
                 <button onClick={onCreate} className="w-full bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action">建立新測驗室</button>
               </div>
               <div className="mt-8 border-t pt-6 flex flex-col gap-3">
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">返回現有教室</label>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">恢復現有測驗室</label>
                 <div className="flex gap-2">
                   <input type="text" placeholder="代碼" className="flex-1 p-3 bg-white border rounded-xl outline-none font-mono uppercase" value={resCode} onChange={e => setResCode(e.target.value)} />
-                  <button onClick={() => onResume(resCode)} className="bg-indigo-100 text-indigo-700 font-bold px-6 rounded-xl btn-quiz-action transition-all">恢復</button>
+                  <button onClick={() => onResume(resCode)} className="bg-indigo-100 text-indigo-700 font-bold px-6 rounded-xl btn-quiz-action">恢復</button>
                 </div>
               </div>
             </div>
@@ -334,17 +324,7 @@
         }
         await updateDoc(sRef, { questions: updatedQuestions });
         setEditingIndex(null);
-        showToast('修改已儲存');
-      };
-
-      const exportJSON = () => {
-        const fileName = `${session.quizTitle || '題庫'}.json`;
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(quizBanks, null, 2));
-        const anchor = document.createElement('a');
-        anchor.setAttribute("href", dataStr);
-        anchor.setAttribute("download", fileName);
-        anchor.click();
-        showToast(`已匯出檔案：${fileName}`);
+        showToast('修改成功');
       };
 
       const exportAnswers = () => {
@@ -354,7 +334,7 @@
         anchor.setAttribute("href", dataStr);
         anchor.setAttribute("download", fileName);
         anchor.click();
-        showToast('作答記錄已導出');
+        showToast('資料已導出');
       };
 
       useEffect(() => {
@@ -366,6 +346,7 @@
 
       return (
         <div className="space-y-6">
+          
           {/* Modal: 作答總表 */}
           {showResultsModal && (
             <div className="fixed inset-0 bg-slate-900/95 z-[200] flex items-center justify-center p-4 backdrop-blur-md">
@@ -392,7 +373,7 @@
                             <td className="p-4 font-bold text-indigo-900 sticky left-0 bg-inherit shadow-md">{s.studentName}</td>
                             <td className="p-4 text-center font-black text-indigo-600">{s.score || 0}</td>
                             {session.questions.map((_, i) => (
-                              <td key={i} className="p-4 border-l text-xs text-slate-600 italic max-w-xs truncate" title={s.answers[i] || '未答'}>
+                              <td key={i} className="p-4 border-l text-xs text-slate-600 max-w-xs truncate" title={s.answers[i] || '未答'}>
                                 {s.answers[i] || '-'}
                               </td>
                             ))}
@@ -406,7 +387,7 @@
             </div>
           )}
 
-          {/* Modal: 題庫編輯 */}
+          {/* Modal: 題庫檢視 */}
           {showFullBankPreview && (
             <div className="fixed inset-0 bg-slate-900/90 z-[200] flex items-center justify-center p-4 backdrop-blur-md">
                <div className="bg-white w-full max-w-5xl h-full rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
@@ -422,8 +403,8 @@
                            <div className="flex-1">
                               {editingIndex === idx ? (
                                 <div className="space-y-4">
-                                  <textarea className="w-full p-3 border rounded-xl h-24 outline-none" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
-                                  <textarea className="w-full p-3 border rounded-xl h-32 outline-none" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})}/>
+                                  <textarea className="w-full p-3 border rounded-xl h-24 focus:ring-2 focus:ring-indigo-500 outline-none" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
+                                  <textarea className="w-full p-3 border rounded-xl h-32 focus:ring-2 focus:ring-indigo-500 outline-none" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})}/>
                                   <div className="flex gap-2">
                                     <button onClick={saveEdit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 btn-quiz-action"><Save className="w-4 h-4"/> 確定儲存</button>
                                     <button onClick={()=>setEditingIndex(null)} className="bg-slate-200 px-6 py-2 rounded-xl font-bold">取消</button>
@@ -432,10 +413,10 @@
                               ) : (
                                 <>
                                   <div className="flex justify-between items-start">
-                                    <h3 className="text-lg font-bold text-slate-800 pr-4">{q.question}</h3>
+                                    <h3 className="text-lg font-bold text-slate-800 leading-relaxed pr-4">{q.question}</h3>
                                     <button onClick={()=> { setEditingIndex(idx); setEditForm({question:q.question, answer:q.answer}); }} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 className="w-5 h-5"/></button>
                                   </div>
-                                  <div className="mt-4 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 text-emerald-900 whitespace-pre-wrap">{q.answer}</div>
+                                  <div className="mt-4 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 text-emerald-900 whitespace-pre-wrap font-medium">{q.answer}</div>
                                 </>
                               )}
                            </div>
@@ -448,13 +429,13 @@
             </div>
           )}
 
-          {/* 控制面板 */}
+          {/* 控制中心 */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-              <h2 className="text-xl font-bold text-indigo-900">講師主控面板</h2>
+              <h2 className="text-xl font-bold text-indigo-900 tracking-tight">測驗控制中心</h2>
               <div className="flex gap-4">
                 {session.status==='sync_active' && <TimerDisplay endTime={session.questionEndTime} label="當前題倒數" />}
-                <TimerDisplay endTime={session.totalEndTime} label="總倒數" />
+                <TimerDisplay endTime={session.totalEndTime} label="測驗總倒數" />
               </div>
             </div>
 
@@ -466,13 +447,13 @@
                     <button onClick={() => {
                       const ta = document.createElement("textarea"); ta.value = getShareableUrl(code);
                       document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-                      showToast('學生網址已複製');
+                      showToast('邀請網址已複製');
                     }} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs btn-quiz-action">複製連結</button>
                   </div>
                   
                   <div className="flex gap-2">
-                    <button onClick={() => setShowFullBankPreview(true)} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black btn-quiz-action shadow-sm">檢視/修正題庫</button>
-                    <button onClick={() => setShowResultsModal(true)} className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black btn-quiz-action shadow-md">作答監控總表</button>
+                    <button onClick={() => setShowFullBankPreview(true)} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black btn-quiz-action shadow-sm"><FileSearch className="w-4 h-4"/> 檢視/修正題庫</button>
+                    <button onClick={() => setShowResultsModal(true)} className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black btn-quiz-action shadow-md"><ClipboardList className="w-4 h-4"/> 作答監控總表</button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
@@ -482,18 +463,18 @@
                   </div>
                 </div>
                 <div className="flex flex-col justify-center gap-3">
-                  <button onClick={() => updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, totalEndTime: Date.now() + session.totalQuizTime * 60000, questionEndTime: Date.now() + session.perQuestionTime * 1000 })} disabled={students.length === 0} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg btn-quiz-action">啟動 統一同步測驗</button>
-                  <button onClick={() => updateDoc(sRef, { status: 'async_active', totalEndTime: Date.now() + session.totalQuizTime * 60000 })} disabled={students.length === 0} className="bg-white border-2 border-indigo-600 text-indigo-700 py-4 rounded-2xl font-bold btn-quiz-action">開放 學生各自作答</button>
-                  {students.length === 0 && <p className="text-center text-[10px] text-red-500 font-bold animate-pulse tracking-tight">（目前還沒有學生加入）</p>}
+                  <button onClick={() => updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, totalEndTime: Date.now() + session.totalQuizTime * 60000, questionEndTime: Date.now() + session.perQuestionTime * 1000 })} disabled={students.length === 0} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg btn-quiz-action transition-all">啟動 統一同步測驗</button>
+                  <button onClick={() => updateDoc(sRef, { status: 'async_active', totalEndTime: Date.now() + session.totalQuizTime * 60000 })} disabled={students.length === 0} className="bg-white border-2 border-indigo-600 text-indigo-700 py-4 rounded-2xl font-bold btn-quiz-action transition-all">開放 學生各自作答</button>
+                  {students.length === 0 && <p className="text-center text-[10px] text-red-500 font-bold animate-pulse">（請先等待學生加入測驗室）</p>}
                 </div>
               </div>
             ) : (
               <div className="flex justify-between items-center bg-slate-900 text-white p-5 rounded-2xl shadow-xl">
-                <p className="font-bold flex items-center gap-2"><Play className="w-5 h-5 fill-indigo-400" /> 正派發：{session.quizTitle}</p>
+                <p className="font-bold flex items-center gap-2 tracking-tight"><Play className="w-5 h-5 fill-indigo-400" /> 正派發：{session.quizTitle}</p>
                 <div className="flex gap-3">
-                  {session.status === 'sync_active' && <button onClick={nextQuestion} className="bg-white text-indigo-900 px-8 py-2 rounded-xl font-bold btn-quiz-action">{session.currentQuestionIndex < totalQ - 1 ? '下一題' : '檢討'}</button>}
-                  <button onClick={() => setShowResultsModal(true)} className="bg-indigo-600 text-white px-8 py-2 rounded-xl font-bold btn-quiz-action flex items-center gap-2"><ClipboardList className="w-4 h-4"/> 作答表</button>
-                  <button onClick={handleForceEnd} className="bg-red-500 text-white px-8 py-2 rounded-xl font-bold hover:bg-red-600 btn-quiz-action flex items-center gap-2"><Square className="w-4 h-4" /> 結束</button>
+                  {session.status === 'sync_active' && <button onClick={nextQuestion} className="bg-white text-indigo-900 px-8 py-2 rounded-xl font-bold btn-quiz-action">{session.currentQuestionIndex < totalQ - 1 ? '發布下一題' : '檢討模式'}</button>}
+                  <button onClick={() => setShowResultsModal(true)} className="bg-indigo-600 text-white px-8 py-2 rounded-xl font-bold btn-quiz-action flex items-center gap-2"><ClipboardList className="w-4 h-4"/> 作答監控</button>
+                  <button onClick={handleForceEnd} className="bg-red-500 text-white px-8 py-2 rounded-xl font-bold hover:bg-red-600 btn-quiz-action flex items-center gap-2 transition-colors"><Square className="w-4 h-4" /> 結束測驗</button>
                 </div>
               </div>
             )}
@@ -508,11 +489,16 @@
                     <button onClick={() => {
                       const cur = session.currentQuestionIndex; const newR = session.revealedAnswers.includes(cur) ? session.revealedAnswers.filter(i => i !== cur) : [...session.revealedAnswers, cur];
                       updateDoc(sRef, { revealedAnswers: newR });
-                    }} className="text-xs bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold btn-quiz-action">{session.revealedAnswers.includes(session.currentQuestionIndex) ? '解答已公開' : '公開本題解答'}</button>
+                    }} className="text-xs bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold btn-quiz-action">{session.revealedAnswers.includes(session.currentQuestionIndex) ? '已公開解答' : '公開本題解答'}</button>
                   )}
                 </div>
                 <p className="text-2xl font-bold text-slate-700 leading-relaxed mb-8">{session.questions?.[session.currentQuestionIndex]?.question}</p>
-                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 text-emerald-900 whitespace-pre-wrap">{session.questions?.[session.currentQuestionIndex]?.answer}</div>
+                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 text-emerald-900 font-medium whitespace-pre-wrap">{session.questions?.[session.currentQuestionIndex]?.answer}</div>
+                {(session.status === 'review' || session.status === 'async_active') && (
+                  <div className="mt-8 pt-8 border-t flex flex-wrap gap-2.5">
+                    {session.questions.map((_, i) => <button key={i} onClick={() => updateDoc(sRef, { currentQuestionIndex: i })} className={`w-12 h-12 rounded-2xl font-bold transition-all btn-quiz-action ${session.currentQuestionIndex === i ? 'bg-indigo-600 text-white shadow-xl scale-110' : 'bg-slate-100 text-slate-400'}`}>{i + 1}</button>)}
+                  </div>
+                )}
               </div>
             </div>
             <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border h-[650px] flex flex-col">
@@ -520,7 +506,7 @@
               <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
                 {students.map(s => (
                   <div key={s.id} className="p-4 bg-slate-50 rounded-2xl border transition-colors hover:bg-indigo-50/50">
-                    <div className="flex justify-between items-center mb-2"><span className="font-bold text-indigo-900">{s.studentName}</span>{session.status === 'review' && <input type="number" className="w-10 text-center font-bold border rounded bg-white text-indigo-600" value={s.score || 0} onChange={e => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', s.id), { score: Number(e.target.value) })} />}</div>
+                    <div className="flex justify-between items-center mb-2"><span className="font-bold text-indigo-900 text-base">{s.studentName}</span>{session.status === 'review' && <div className="flex items-center gap-1 bg-white border px-1 rounded shadow-sm"><span className="text-[8px] font-bold text-slate-300">分</span><input type="number" className="w-10 text-center font-bold outline-none bg-transparent text-indigo-600" value={s.score || 0} onChange={e => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', s.id), { score: Number(e.target.value) })} /></div>}</div>
                     <div className="text-xs text-slate-500 italic truncate">{s.answers[session.currentQuestionIndex] || '未作答'}</div>
                   </div>
                 ))}
@@ -547,7 +533,7 @@
       if (sessionData.status === 'lobby') return (
         <div className="flex flex-col items-center justify-center py-24 bg-white rounded-[3rem] shadow-2xl border border-slate-200 mt-10 animate-pulse">
            <Clock className="w-16 h-16 text-indigo-200 mb-6" />
-           <h2 className="text-2xl font-black text-slate-800 mb-2">已進入候考室</h2>
+           <h2 className="text-2xl font-black text-slate-800 mb-2">已成功連線</h2>
            <p className="text-slate-500 font-medium">請保持在此畫面，老師即將啟動測驗...</p>
         </div>
       );
@@ -556,29 +542,29 @@
         <div className="max-w-3xl mx-auto space-y-6 mt-4">
           <div className="bg-white p-6 rounded-3xl shadow-sm border flex justify-between items-center">
             <div><p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1">{sessionData.quizTitle}</p><h2 className="text-2xl font-bold text-slate-800">第 {activeIdx + 1} 題</h2></div>
-            {sessionData.status.includes('active') && <div className="flex gap-4">{sessionData.status === 'sync_active' && <TimerDisplay endTime={sessionData.questionEndTime} label="本題倒數" />}<TimerDisplay endTime={sessionData.totalEndTime} label="總剩餘" /></div>}
+            {sessionData.status.includes('active') && <div className="flex gap-4">{sessionData.status === 'sync_active' && <TimerDisplay endTime={sessionData.questionEndTime} label="本題倒數" alertMode={true}/>}<TimerDisplay endTime={sessionData.totalEndTime} label="測驗總剩餘" /></div>}
           </div>
           <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
             <div className="p-8 bg-indigo-50/50 border-b border-indigo-100 text-2xl font-bold text-slate-800 leading-relaxed">{q.question}</div>
             <div className="p-8">
-              <textarea className="w-full h-64 p-6 bg-slate-50 border-2 rounded-3xl outline-none text-lg focus:bg-white transition-all shadow-inner" placeholder="在此輸入您的答案內容..." value={text} onChange={e => setText(e.target.value)} onBlur={handleSave} disabled={sessionData.status === 'review'} />
+              <textarea className="w-full h-64 p-6 bg-slate-50 border-2 rounded-3xl outline-none text-lg focus:bg-white transition-all resize-none shadow-inner" placeholder="在此輸入您的答案..." value={text} onChange={e => setText(e.target.value)} onBlur={handleSave} disabled={sessionData.status === 'review'} />
               <div className="mt-6 flex justify-between items-center">
-                <div className="flex gap-2">{sessionData.status !== 'sync_active' && <><button onClick={() => setLocalIdx(p => Math.max(0, p - 1))} disabled={activeIdx === 0} className="px-6 py-2.5 bg-slate-100 rounded-xl font-bold disabled:opacity-30 btn-quiz-action transition-all">上一題</button><button onClick={() => setLocalIdx(p => Math.min(sessionData.questions.length - 1, p + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="px-6 py-2.5 bg-slate-100 rounded-xl font-bold disabled:opacity-30 btn-quiz-action transition-all">下一題</button></>}</div>
-                {sessionData.status !== 'review' && <button onClick={handleSave} className="bg-indigo-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg btn-quiz-action">{saved ? '已存檔 ✓' : '手動存檔'}</button>}
+                <div className="flex gap-2">{sessionData.status !== 'sync_active' && <><button onClick={() => setLocalIdx(p => Math.max(0, p - 1))} disabled={activeIdx === 0} className="px-6 py-2.5 bg-slate-100 rounded-xl font-bold disabled:opacity-30 btn-quiz-action">上一題</button><button onClick={() => setLocalIdx(p => Math.min(sessionData.questions.length - 1, p + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="px-6 py-2.5 bg-slate-100 rounded-xl font-bold disabled:opacity-30 btn-quiz-action">下一題</button></>}</div>
+                {sessionData.status !== 'review' && <button onClick={handleSave} className="bg-indigo-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg btn-quiz-action">{saved ? '已自動存檔 ✓' : '手動存檔'}</button>}
               </div>
             </div>
           </div>
           {sessionData.status === 'review' && (
-            <div className={`p-10 rounded-[2.5rem] border-2 transition-all duration-700 shadow-lg ${isVisible ? 'bg-emerald-50 border-emerald-200 opacity-100 translate-y-0' : 'bg-slate-50 border-slate-100 opacity-50 translate-y-4'}`}>
+            <div className={`p-10 rounded-[2.5rem] border-2 transition-all duration-700 shadow-lg ${isVisible ? 'bg-emerald-50 border-emerald-100 opacity-100 translate-y-0' : 'bg-slate-50 border-slate-100 opacity-50 translate-y-4'}`}>
               <h4 className="font-bold mb-5 flex items-center gap-2 text-emerald-800 tracking-widest uppercase text-sm"><Eye className="w-5 h-5" /> 標準解答內容</h4>
-              {isVisible ? <p className="text-xl leading-relaxed text-emerald-900 whitespace-pre-wrap">{q.answer}</p> : <p className="italic text-slate-400">老師尚未公開解答...</p>}
+              {isVisible ? <p className="text-xl leading-relaxed text-emerald-900 font-medium whitespace-pre-wrap">{q.answer}</p> : <p className="italic text-slate-400">老師尚未公開標準解答內容...</p>}
             </div>
           )}
         </div>
       );
     }
 
-    function TimerDisplay({ endTime, label }) {
+    function TimerDisplay({ endTime, label, alertMode = false }) {
       const [t, setT] = useState(0);
       useEffect(() => {
         if(!endTime) return;
@@ -588,8 +574,9 @@
       if(!endTime) return null;
       const m = Math.floor(t / 60).toString().padStart(2, '0');
       const s = (t % 60).toString().padStart(2, '0');
+      const urgent = alertMode && t > 0 && t <= 10;
       return (
-        <div className={`px-4 py-1.5 rounded-2xl border font-mono text-center transition-all ${t<10&&t>0 ? 'bg-red-50 text-red-600 animate-pulse border-red-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+        <div className={`px-4 py-1.5 rounded-2xl border font-mono text-center transition-all ${urgent ? 'bg-red-50 text-red-600 animate-pulse border-red-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
           <div className="text-[8px] font-bold uppercase opacity-60 leading-none mb-1">{label}</div>
           <div className="text-lg font-bold leading-tight">{m}:{s}</div>
         </div>
