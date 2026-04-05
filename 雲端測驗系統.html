@@ -44,15 +44,15 @@
         flex: 1;
         overflow-y: auto;
       }
-      .question-box {
+      .question-box-limit {
         max-height: 25vh;
         overflow-y: auto;
       }
-      .answer-area {
+      .answer-area-flex {
         flex: 1;
-        min-height: 80px;
         display: flex;
         flex-direction: column;
+        min-height: 0;
       }
     }
 
@@ -62,6 +62,9 @@
     }
     .animate-scale-in {
       animation: scale-in 0.2s ease-out forwards;
+    }
+    .quiz-ended-banner {
+      animation: scale-in 0.3s ease-out;
     }
   </style>
 </head>
@@ -162,10 +165,10 @@
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', newCode), {
             hostId: user.uid, status: 'lobby', quizBankId: firstBankKey, quizTitle: currentBank.name,
             questions: currentBank.questions, currentQuestionIndex: 0, 
-            perQuestionUnit: 'seconds', perQuestionValue: 5,   // 新增：單題時效(單位與數值)
-            totalQuizUnit: 'minutes', totalQuizValue: 1,       // 新增：總時效(單位與數值)
+            perQuestionUnit: 'seconds', perQuestionValue: 5,   // 單題時效
+            totalQuizUnit: 'minutes', totalQuizValue: 1,       // 總時效
             autoAdvance: true, submissionDays: 1,
-            submissionValue: 1, submissionUnit: 'days',        // 延續原本的非同步回傳設定
+            submissionValue: 1, submissionUnit: 'days',        // 回傳設定
             revealedAnswers: [], revealAll: false, createdAt: Date.now()
           });
           setSessionCode(newCode); setRole('instructor');
@@ -305,7 +308,7 @@
       const totalQ = session.questions?.length || 0;
       const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code);
 
-      // --- 時間計算小幫手 ---
+      // --- 時間計算邏輯 ---
       const getQuestionEndTime = () => {
         if (session.perQuestionUnit === 'unlimited') return null;
         const val = session.perQuestionValue !== undefined ? session.perQuestionValue : 5;
@@ -329,7 +332,7 @@
       const handleForceEnd = () => updateDoc(sRef, { status: 'review', questionEndTime: null, totalEndTime: null, currentQuestionIndex: 0 });
 
       const handleStartSubmissionMode = () => {
-        let multiplier = 24 * 60 * 60 * 1000; // 預設為天
+        let multiplier = 24 * 60 * 60 * 1000; // 天
         let unitText = '天';
         if (session.submissionUnit === 'minutes') { multiplier = 60 * 1000; unitText = '分鐘'; }
         if (session.submissionUnit === 'hours') { multiplier = 60 * 60 * 1000; unitText = '小時'; }
@@ -338,7 +341,7 @@
           status: 'submission_mode',
           totalEndTime: Date.now() + ((session.submissionValue || 1) * multiplier)
         });
-        showToast(`已啟動回傳模式，時限為 ${session.submissionValue || 1} ${unitText}`);
+        showToast(`已啟動回傳模式，時效為 ${session.submissionValue || 1} ${unitText}`);
       };
 
       const saveEdit = async () => {
@@ -446,7 +449,7 @@
               </div>
             </div>
 
-            {/* 🌟 永遠固定顯示的分享連結區塊 */}
+            {/* 🌟 固定顯示的分享連結區塊 */}
             <div className="mb-4 p-3 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center gap-2">
               <span className="text-xs font-bold text-indigo-800 whitespace-nowrap hidden sm:inline">學生邀請網址：</span>
               <input type="text" readOnly className="flex-1 bg-white text-[10px] md:text-xs p-2 rounded-lg border border-indigo-100 font-mono outline-none text-slate-500" value={getShareableUrl(code)} />
@@ -553,16 +556,27 @@
     function StudentDashboard({ sessionData, myData, onAnswer, onFinalSubmit }) {
       const [localIdx, setLocalIdx] = useState(0);
       const [showOverview, setShowOverview] = useState(false);
-      const activeIdx = sessionData.status === 'sync_active' ? sessionData.currentQuestionIndex : localIdx;
+      
+      // 🌟 當單題時效為「不設限」時，放開導覽權限給學生
+      const isSyncStrict = sessionData.status === 'sync_active' && sessionData.perQuestionUnit !== 'unlimited';
+      const activeIdx = isSyncStrict ? sessionData.currentQuestionIndex : localIdx;
+      
       const q = sessionData.questions?.[activeIdx] || {};
       const [text, setText] = useState('');
       const [saved, setSaved] = useState(false);
 
       useEffect(() => { if (myData) setText(myData.answers?.[activeIdx] || ''); }, [activeIdx, myData]);
-      useEffect(() => { if (sessionData.status === 'sync_active') { setLocalIdx(sessionData.currentQuestionIndex); setShowOverview(false); } }, [sessionData.currentQuestionIndex, sessionData.status]);
+      
+      // 即使學生可以自由導覽，如果老師強制換題，還是會拉回老師的當前題目進度 (確保同步感)
+      useEffect(() => { 
+        if (sessionData.status === 'sync_active') { 
+          setLocalIdx(sessionData.currentQuestionIndex); 
+          setShowOverview(false); 
+        } 
+      }, [sessionData.currentQuestionIndex, sessionData.status]);
 
       const handleSave = () => { onAnswer(activeIdx, text); setSaved(true); setTimeout(() => setSaved(false), 2000); };
-      const isVisible = sessionData.revealAll || sessionData.revealedAnswers?.includes(activeIdx);
+      const isRevealed = sessionData.revealAll || sessionData.revealedAnswers?.includes(activeIdx);
 
       if (sessionData.status === 'lobby') return <div className="flex h-[70vh] flex-col items-center justify-center bg-white rounded-3xl animate-pulse"><Clock className="w-16 h-16 text-indigo-200 mb-6" /><h2 className="text-xl font-black">已進入候考室</h2><p className="text-slate-500">等待教師啟動測驗模式...</p></div>;
 
@@ -592,11 +606,20 @@
 
           <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center mb-2 shrink-0">
              <div className="flex flex-col"><span className="text-[8px] font-bold text-indigo-500 uppercase tracking-tighter truncate w-32">{sessionData.quizTitle}</span><h2 className="text-sm font-bold text-slate-800">第 {activeIdx + 1} 題 / {sessionData.questions.length}</h2></div>
-             <div className="flex gap-2 scale-90 origin-right"><TimerDisplay endTime={sessionData.totalEndTime} label="時效" alertMode={true}/></div>
+             <div className="flex gap-2 scale-90 origin-right">
+                {sessionData.status === 'sync_active' && <TimerDisplay endTime={sessionData.questionEndTime} label="單題" alertMode={true}/>}
+                <TimerDisplay endTime={sessionData.totalEndTime} label="總時效" alertMode={false}/>
+             </div>
           </div>
 
           <div className="bg-white rounded-3xl shadow-xl border border-slate-200 flex flex-col flex-1 min-h-0 overflow-hidden">
-            <div className="p-4 bg-indigo-50/50 border-b question-box-limit shrink-0"><div className="text-md md:text-xl font-bold text-slate-800 leading-tight">{(isRevealed || sessionData.status !== 'review') ? q.question : '題目已鎖定，聽取講解中...'}</div></div>
+            <div className="p-4 bg-indigo-50/50 border-b question-box-limit shrink-0">
+              <div className="text-md md:text-xl font-bold text-slate-800 leading-tight">
+                 {/* 🌟 修正：學生端永遠可以看到題目內容 */}
+                 {q.question || '載入題目中...'}
+                 {sessionData.status === 'review' && <span className="inline-block align-middle ml-2 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold">已鎖定</span>}
+              </div>
+            </div>
             <div className="p-4 flex flex-col flex-1 min-h-0">
               <div className="answer-area-flex">
                 {q.type === 'choice' ? (
@@ -613,19 +636,32 @@
               </div>
               
               <div className="flex justify-between items-center shrink-0">
-                <div className="flex gap-2">{(sessionData.status !== 'sync_active') && <><button onClick={() => setLocalIdx(p => Math.max(0, p - 1))} disabled={activeIdx === 0} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronLeft className="w-5 h-5"/></button><button onClick={() => setLocalIdx(p => Math.min(sessionData.questions.length - 1, p + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronRight className="w-5 h-5"/></button></>}</div>
                 <div className="flex gap-2">
-                  {sessionData.status === 'submission_mode' && !isSubmitted && <button onClick={()=>setShowOverview(true)} className="bg-slate-800 text-white px-5 py-3 rounded-2xl font-bold btn-quiz-action text-sm shadow-md flex items-center gap-1"><LayoutList className="w-4 h-4"/> 檢查回傳</button>}
-                  {sessionData.status.includes('active') && !isSubmitted && (q.type === 'essay' || q.type === 'fill') && <button onClick={()=>{onAnswer(activeIdx, text); setSaved(true); setTimeout(()=>setSaved(false), 2000);}} className="bg-indigo-600 text-white px-5 py-3 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">{saved ? '已存' : '儲存'}</button>}
+                  {/* 🌟 單題時效不設限時，放開上一題/下一題按鈕給學生 */}
+                  {(!isSyncStrict || sessionData.status === 'review') && (
+                    <>
+                      <button onClick={() => setLocalIdx(p => Math.max(0, p - 1))} disabled={activeIdx === 0} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronLeft className="w-5 h-5"/></button>
+                      <button onClick={() => setLocalIdx(p => Math.min(sessionData.questions.length - 1, p + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronRight className="w-5 h-5"/></button>
+                    </>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {/* 🌟 提供「檢查與正式回傳」按鈕 */}
+                  {!isSyncStrict && !isSubmitted && sessionData.status !== 'review' && (
+                    <button onClick={()=>setShowOverview(true)} className="bg-slate-800 text-white px-5 py-3 rounded-2xl font-bold btn-quiz-action text-sm shadow-md flex items-center gap-1"><LayoutList className="w-4 h-4"/> 檢查與回傳</button>
+                  )}
+                  {sessionData.status !== 'review' && !isSubmitted && q.type !== 'choice' && (
+                    <button onClick={()=>{onAnswer(activeIdx, text); setSaved(true); setTimeout(()=>setSaved(false), 2000);}} className="bg-indigo-600 text-white px-5 py-3 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">{saved ? '已存' : '儲存本題'}</button>
+                  )}
                 </div>
               </div>
             </div>
           </div>
           
-          {isRevealed && (
-            <div className={`mt-3 p-4 rounded-2xl border-2 transition-all duration-700 shadow-xl bg-emerald-50 border-emerald-100 animate-scale-in shrink-0`}>
-              <h4 className="font-bold mb-1 flex items-center gap-1 text-emerald-800 text-xs"><Eye className="w-4 h-4" /> 標準解答分析</h4>
-              <p className="text-sm leading-snug text-emerald-900 whitespace-pre-wrap font-medium">{q.answer}</p>
+          {(isRevealed || (sessionData.status === 'review' && !isRevealed)) && (
+            <div className={`mt-3 p-4 rounded-2xl border-2 transition-all duration-700 shadow-xl shrink-0 ${isRevealed ? 'bg-emerald-50 border-emerald-100 animate-scale-in' : 'bg-slate-50 border-slate-200'}`}>
+              <h4 className={`font-bold mb-1 flex items-center gap-1 text-xs ${isRevealed ? 'text-emerald-800' : 'text-slate-500'}`}><Eye className="w-4 h-4" /> 標準解答分析</h4>
+              {isRevealed ? <p className="text-sm leading-snug text-emerald-900 whitespace-pre-wrap font-medium">{q.answer}</p> : <p className="text-[10px] italic text-slate-400">講師尚未公開本題解答...</p>}
             </div>
           )}
         </div>
@@ -642,6 +678,7 @@
         return () => clearInterval(i); 
       }, [endTime]);
       
+      // 🌟 倒數計時「不設限」的文字顯示
       if(!endTime) return (
         <div className={`px-2 py-1 rounded-xl border font-mono text-center shadow-inner bg-slate-50 text-slate-600 border-slate-200`}>
           <div className="text-[6px] font-bold uppercase opacity-60 leading-none tracking-tighter">{label}</div>
