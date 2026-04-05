@@ -63,9 +63,6 @@
     .animate-scale-in {
       animation: scale-in 0.2s ease-out forwards;
     }
-    .quiz-ended-banner {
-      animation: scale-in 0.3s ease-out;
-    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans overflow-x-hidden">
@@ -165,10 +162,10 @@
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', newCode), {
             hostId: user.uid, status: 'lobby', quizBankId: firstBankKey, quizTitle: currentBank.name,
             questions: currentBank.questions, currentQuestionIndex: 0, 
-            perQuestionUnit: 'seconds', perQuestionValue: 5,   // 單題時效
-            totalQuizUnit: 'minutes', totalQuizValue: 1,       // 總時效
+            perQuestionUnit: 'seconds', perQuestionValue: 5,
+            totalQuizUnit: 'minutes', totalQuizValue: 1,
             autoAdvance: true, submissionDays: 1,
-            submissionValue: 1, submissionUnit: 'days',        // 回傳設定
+            submissionValue: 1, submissionUnit: 'days',
             revealedAnswers: [], revealAll: false, createdAt: Date.now()
           });
           setSessionCode(newCode); setRole('instructor');
@@ -225,7 +222,7 @@
                 }} 
                 onFinalSubmit={async () => {
                   await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`), { status: 'submitted', submittedAt: Date.now() });
-                  showToast('答案已成功回傳教師端！');
+                  showToast('全部答案已成功回傳給老師！');
                 }}
               />
             )}
@@ -308,7 +305,6 @@
       const totalQ = session.questions?.length || 0;
       const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code);
 
-      // --- 時間計算邏輯 ---
       const getQuestionEndTime = () => {
         if (session.perQuestionUnit === 'unlimited') return null;
         const val = session.perQuestionValue !== undefined ? session.perQuestionValue : 5;
@@ -332,7 +328,7 @@
       const handleForceEnd = () => updateDoc(sRef, { status: 'review', questionEndTime: null, totalEndTime: null, currentQuestionIndex: 0 });
 
       const handleStartSubmissionMode = () => {
-        let multiplier = 24 * 60 * 60 * 1000; // 天
+        let multiplier = 24 * 60 * 60 * 1000;
         let unitText = '天';
         if (session.submissionUnit === 'minutes') { multiplier = 60 * 1000; unitText = '分鐘'; }
         if (session.submissionUnit === 'hours') { multiplier = 60 * 60 * 1000; unitText = '小時'; }
@@ -461,9 +457,7 @@
                 <div className="space-y-4">
                    <div className="flex gap-2"><button onClick={() => setShowFullBankPreview(true)} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 p-2 rounded-xl text-[10px] font-black btn-quiz-action shadow-sm">檢視/修正題庫</button><button onClick={() => setShowResultsModal(true)} className="flex-1 bg-indigo-600 text-white p-2 rounded-xl text-[10px] font-black btn-quiz-action shadow-md">作答與匯入總表</button></div>
                    
-                   {/* 🌟 設定控制區 */}
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border">
-                      {/* 單題時效設定 */}
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-400">單題時效 (同步)</label>
                         <div className="flex gap-1">
@@ -478,7 +472,6 @@
                         </div>
                       </div>
 
-                      {/* 總時效設定 */}
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-400">總時效 (同步)</label>
                         <div className="flex gap-1">
@@ -493,7 +486,6 @@
                         </div>
                       </div>
                       
-                      {/* 回傳時效設定 */}
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-400">回傳時效 (非同步)</label>
                         <div className="flex gap-1">
@@ -557,7 +549,7 @@
       const [localIdx, setLocalIdx] = useState(0);
       const [showOverview, setShowOverview] = useState(false);
       
-      // 🌟 當單題時效為「不設限」時，放開導覽權限給學生
+      // 🌟 判斷是否被老師綁定視角：若為同步模式且單題時效有設定秒數，學生才不能自行跳題
       const isSyncStrict = sessionData.status === 'sync_active' && sessionData.perQuestionUnit !== 'unlimited';
       const activeIdx = isSyncStrict ? sessionData.currentQuestionIndex : localIdx;
       
@@ -567,7 +559,6 @@
 
       useEffect(() => { if (myData) setText(myData.answers?.[activeIdx] || ''); }, [activeIdx, myData]);
       
-      // 即使學生可以自由導覽，如果老師強制換題，還是會拉回老師的當前題目進度 (確保同步感)
       useEffect(() => { 
         if (sessionData.status === 'sync_active') { 
           setLocalIdx(sessionData.currentQuestionIndex); 
@@ -575,7 +566,6 @@
         } 
       }, [sessionData.currentQuestionIndex, sessionData.status]);
 
-      const handleSave = () => { onAnswer(activeIdx, text); setSaved(true); setTimeout(() => setSaved(false), 2000); };
       const isRevealed = sessionData.revealAll || sessionData.revealedAnswers?.includes(activeIdx);
 
       if (sessionData.status === 'lobby') return <div className="flex h-[70vh] flex-col items-center justify-center bg-white rounded-3xl animate-pulse"><Clock className="w-16 h-16 text-indigo-200 mb-6" /><h2 className="text-xl font-black">已進入候考室</h2><p className="text-slate-500">等待教師啟動測驗模式...</p></div>;
@@ -592,7 +582,7 @@
                 </div>
               ))}
             </div>
-            <div className="flex gap-4"><button onClick={()=>setShowOverview(false)} className="flex-1 p-4 bg-slate-100 rounded-2xl font-bold btn-quiz-action text-sm">返回題目</button><button onClick={()=>{if(confirm('正式回傳後將無法再次修改，確定回傳嗎？')){onFinalSubmit(); setShowOverview(false);}}} className="flex-1 p-4 bg-indigo-600 text-white rounded-2xl font-bold btn-quiz-action shadow-lg text-sm">正式回傳老師</button></div>
+            <div className="flex gap-4"><button onClick={()=>setShowOverview(false)} className="flex-1 p-4 bg-slate-100 rounded-2xl font-bold btn-quiz-action text-sm">返回題目</button><button onClick={()=>{if(confirm('正式回傳後將無法再次修改，確定回傳嗎？')){onFinalSubmit(); setShowOverview(false);}}} className="flex-1 p-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold btn-quiz-action shadow-lg text-sm flex items-center justify-center gap-2">送出全部答案 <Send className="w-5 h-5"/></button></div>
           </div>
         );
       }
@@ -615,7 +605,7 @@
           <div className="bg-white rounded-3xl shadow-xl border border-slate-200 flex flex-col flex-1 min-h-0 overflow-hidden">
             <div className="p-4 bg-indigo-50/50 border-b question-box-limit shrink-0">
               <div className="text-md md:text-xl font-bold text-slate-800 leading-tight">
-                 {/* 🌟 修正：學生端永遠可以看到題目內容 */}
+                 {/* 🌟 學生端永遠可以看到題目內容 */}
                  {q.question || '載入題目中...'}
                  {sessionData.status === 'review' && <span className="inline-block align-middle ml-2 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold">已鎖定</span>}
               </div>
@@ -625,19 +615,19 @@
                 {q.type === 'choice' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 overflow-y-auto custom-scrollbar">
                     {q.options?.map((opt, i) => (
-                      <button key={i} disabled={sessionData.status==='review' || isSubmitted} onClick={()=>{onAnswer(activeIdx, (i+1).toString()); setSaved(true); setTimeout(()=>setSaved(false), 1000);}} className={`p-4 rounded-2xl border-2 font-bold transition-all text-left text-sm ${text === (i+1).toString() ? 'bg-indigo-600 text-white border-indigo-800 scale-105 shadow-md' : 'bg-white border-slate-100 hover:border-indigo-300'} btn-quiz-action`}>
+                      <button key={i} disabled={sessionData.status==='review' || isSubmitted} onClick={()=>{ setText((i+1).toString()); }} className={`p-4 rounded-2xl border-2 font-bold transition-all text-left text-sm ${text === (i+1).toString() ? 'bg-red-500 text-white border-red-700 scale-105 shadow-md' : 'bg-white border-slate-200 hover:border-red-300 text-slate-700'} btn-quiz-action`}>
                         {opt}
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <textarea className={`w-full p-4 border-2 rounded-2xl outline-none text-md leading-snug flex-1 mb-4 ${sessionData.status === 'review' || isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-white shadow-inner focus:border-indigo-400 transition-all'}`} placeholder={isSubmitted ? "已成功回傳" : "請輸入作答內容..."} value={text} onChange={e => setText(e.target.value)} onBlur={()=>onAnswer(activeIdx, text)} disabled={sessionData.status === 'review' || isSubmitted} />
+                  <textarea className={`w-full p-4 border-2 rounded-2xl outline-none text-md leading-snug flex-1 mb-4 ${sessionData.status === 'review' || isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-white shadow-inner focus:border-indigo-400 transition-all'}`} placeholder={isSubmitted ? "已成功回傳" : "請輸入作答內容..."} value={text} onChange={e => setText(e.target.value)} disabled={sessionData.status === 'review' || isSubmitted} />
                 )}
               </div>
               
               <div className="flex justify-between items-center shrink-0">
                 <div className="flex gap-2">
-                  {/* 🌟 單題時效不設限時，放開上一題/下一題按鈕給學生 */}
+                  {/* 🌟 當無時間限制(自由導覽模式)或是已經結束時，允許學生自行跳題查看 */}
                   {(!isSyncStrict || sessionData.status === 'review') && (
                     <>
                       <button onClick={() => setLocalIdx(p => Math.max(0, p - 1))} disabled={activeIdx === 0} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronLeft className="w-5 h-5"/></button>
@@ -646,22 +636,35 @@
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {/* 🌟 提供「檢查與正式回傳」按鈕 */}
-                  {!isSyncStrict && !isSubmitted && sessionData.status !== 'review' && (
-                    <button onClick={()=>setShowOverview(true)} className="bg-slate-800 text-white px-5 py-3 rounded-2xl font-bold btn-quiz-action text-sm shadow-md flex items-center gap-1"><LayoutList className="w-4 h-4"/> 檢查與回傳</button>
-                  )}
-                  {sessionData.status !== 'review' && !isSubmitted && q.type !== 'choice' && (
-                    <button onClick={()=>{onAnswer(activeIdx, text); setSaved(true); setTimeout(()=>setSaved(false), 2000);}} className="bg-indigo-600 text-white px-5 py-3 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">{saved ? '已存' : '儲存本題'}</button>
+                  {(!isSyncStrict && sessionData.status !== 'review' && !isSubmitted) && <button onClick={()=>setShowOverview(true)} className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-sm shadow-md flex items-center gap-1"><LayoutList className="w-4 h-4"/> 檢查所有答案</button>}
+                  
+                  {/* 🌟 修改: 若有選取答案，則顯示「送出」按鈕 */}
+                  {sessionData.status !== 'review' && !isSubmitted && text !== '' && (
+                    <button onClick={()=>{
+                      onAnswer(activeIdx, text); 
+                      setSaved(true); 
+                      setTimeout(()=>setSaved(false), 2000);
+                      
+                      if (!isSyncStrict) {
+                        if (activeIdx < sessionData.questions.length - 1) {
+                          setLocalIdx(activeIdx + 1);
+                        } else {
+                          setShowOverview(true);
+                        }
+                      }
+                    }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action text-sm shadow-lg flex items-center gap-1">
+                      {text !== (myData.answers?.[activeIdx] || '') ? '送出 (修改)' : '送出'} <Send className="w-4 h-4"/>
+                    </button>
                   )}
                 </div>
               </div>
             </div>
           </div>
           
-          {(isRevealed || (sessionData.status === 'review' && !isRevealed)) && (
-            <div className={`mt-3 p-4 rounded-2xl border-2 transition-all duration-700 shadow-xl shrink-0 ${isRevealed ? 'bg-emerald-50 border-emerald-100 animate-scale-in' : 'bg-slate-50 border-slate-200'}`}>
-              <h4 className={`font-bold mb-1 flex items-center gap-1 text-xs ${isRevealed ? 'text-emerald-800' : 'text-slate-500'}`}><Eye className="w-4 h-4" /> 標準解答分析</h4>
-              {isRevealed ? <p className="text-sm leading-snug text-emerald-900 whitespace-pre-wrap font-medium">{q.answer}</p> : <p className="text-[10px] italic text-slate-400">講師尚未公開本題解答...</p>}
+          {isRevealed && (
+            <div className={`mt-3 p-4 rounded-2xl border-2 transition-all duration-700 shadow-xl bg-emerald-50 border-emerald-100 animate-scale-in shrink-0`}>
+              <h4 className="font-bold mb-1 flex items-center gap-1 text-emerald-800 text-xs"><Eye className="w-4 h-4" /> 標準解答分析</h4>
+              <p className="text-sm leading-snug text-emerald-900 whitespace-pre-wrap font-medium">{q.answer}</p>
             </div>
           )}
         </div>
