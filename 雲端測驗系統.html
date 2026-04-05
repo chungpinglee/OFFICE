@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>雲端互動測驗平台 - 完整資料採集版</title>
+  <title>雲端互動測驗平台 - 教學資料採集版</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -17,15 +17,15 @@
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
     
-    /* 滑鼠滑過特效：文字白色，背景深綠色 */
+    /* 修正 Hover 特效：文字白色，背景深綠色 */
     .btn-quiz-action {
       transition: all 0.2s ease-in-out;
     }
     .btn-quiz-action:hover:not(:disabled) {
-      background-color: #064e3b !important;
+      background-color: #064e3b !important; /* 深綠色 */
       color: white !important;
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(6, 78, 59, 0.2);
+      box-shadow: 0 4px 12px rgba(6, 78, 59, 0.3);
     }
     .btn-quiz-action:active:not(:disabled) {
       transform: translateY(0);
@@ -58,8 +58,8 @@
     import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
     import { getFirestore, doc, setDoc, onSnapshot, collection, updateDoc, getDoc, getDocs } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-    // --- 安全設定：程式碼內不再存放任何題庫 ---
-    const EMPTY_QUIZ_BANK = {};
+    // --- 固定 appId 避免版本更新導致找不到資料 ---
+    const appId = 'music-interactive-quiz-system-final';
 
     // Firebase 配置 (musictest-1c0fb)
     const firebaseConfig = {
@@ -72,7 +72,6 @@
       measurementId: "G-8NZLQDYY1N"
     };
     
-    const appId = 'secure-music-quiz-v10';
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
@@ -95,8 +94,8 @@
       const [authError, setAuthError] = useState('');
       
       const [quizBanks, setQuizBanks] = useState(() => {
-        const saved = localStorage.getItem('secure_quiz_banks_v10');
-        return saved ? JSON.parse(saved) : EMPTY_QUIZ_BANK;
+        const saved = localStorage.getItem('secure_quiz_banks_final');
+        return saved ? JSON.parse(saved) : {};
       });
 
       const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3000); };
@@ -115,7 +114,7 @@
         const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode);
         const unsubS = onSnapshot(sRef, (snap) => {
           if (snap.exists()) setSessionData(snap.data());
-          else if (role === 'student') { setRole(null); setSessionCode(''); setErrorMsg('測驗室已關閉或無效。'); }
+          else if (role === 'student') { setRole(null); setSessionCode(''); setErrorMsg('找不到該測驗代碼，或測驗已結束。'); }
         });
 
         const aRef = collection(db, 'artifacts', appId, 'public', 'data', 'answers');
@@ -128,7 +127,7 @@
 
       const handleCreate = async () => {
         if (Object.keys(quizBanks).length === 0) {
-          setErrorMsg("請先匯入 JSON 題庫檔案，才能建立測驗。");
+          setErrorMsg("請先點擊右側「匯入 JSON 題庫檔案」後，才能建立測驗室。");
           return;
         }
         const newCode = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -137,46 +136,38 @@
         
         try {
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', newCode), {
-            hostId: user.uid, 
-            status: 'lobby', 
-            quizBankId: firstBankKey, 
-            quizTitle: currentBank.name,
-            questions: currentBank.questions, 
-            currentQuestionIndex: 0, 
-            perQuestionTime: 5, 
-            totalQuizTime: 1, 
-            autoAdvance: true,
-            revealedAnswers: [], 
-            revealAll: false, 
-            createdAt: Date.now()
+            hostId: user.uid, status: 'lobby', quizBankId: firstBankKey, quizTitle: currentBank.name,
+            questions: currentBank.questions, currentQuestionIndex: 0, 
+            perQuestionTime: 5, totalQuizTime: 1, autoAdvance: true,
+            revealedAnswers: [], revealAll: false, createdAt: Date.now()
           });
           setSessionCode(newCode); setRole('instructor');
-        } catch (e) { setErrorMsg("建立失敗，請檢查資料庫權限。"); }
+        } catch (e) { setErrorMsg("建立失敗，請檢查資料庫 Rules 規則。"); }
       };
 
       const handleJoin = async (code, name) => {
-        if (!code || !name) return setErrorMsg('請填寫姓名與代碼');
+        if (!code || !name) return setErrorMsg('請填寫姓名與測驗代碼');
         const c = code.trim().toUpperCase();
         const n = name.trim().replace(/[\/\.#$\[\]]/g, '_');
         try {
           const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', c));
-          if (!snap.exists()) return setErrorMsg('找不到該測驗代碼');
+          if (!snap.exists()) return setErrorMsg('找不到該測驗代碼，請確認代碼是否正確。');
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${c}_${user.uid}_${n}`), {
             sessionId: c, studentId: `${user.uid}_${n}`, studentName: n, answers: {}, score: 0
           }, { merge: true });
           setSessionCode(c); setStudentName(n); setRole('student');
-        } catch (e) { setErrorMsg("加入失敗。"); }
+        } catch (e) { setErrorMsg("加入失敗，請檢查網路連線。"); }
       };
 
       if (authError) return <div className="h-screen flex items-center justify-center p-6 text-red-600 font-bold text-center">{authError}</div>;
-      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse">系統初始化中...</div>;
+      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse">系統連網中...</div>;
 
       return (
         <div className="min-h-screen flex flex-col">
           <header className="bg-indigo-900 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-50">
-            <h1 className="font-bold flex items-center gap-2 text-lg"><ListChecks /> 雲端即時測驗系統</h1>
+            <h1 className="font-bold flex items-center gap-2 text-lg"><ListChecks /> 雲端即時互動測驗系統</h1>
             {role && (
-              <div className="bg-indigo-800 px-4 py-1.5 rounded-full flex gap-4 text-sm items-center transition-all">
+              <div className="bg-indigo-800 px-4 py-1.5 rounded-full flex gap-4 text-sm items-center">
                 <span className="hidden sm:inline">{role === 'instructor' ? '講師管理' : studentName}</span>
                 <span className="font-mono text-yellow-300 font-bold tracking-widest">代碼: {sessionCode}</span>
                 <button onClick={()=>{setRole(null); setSessionCode('');}} className="bg-red-500 hover:bg-red-600 px-2.5 py-0.5 rounded text-xs transition-colors">離開</button>
@@ -185,17 +176,12 @@
           </header>
 
           <main className="flex-1 max-w-6xl mx-auto p-4 md:p-8 w-full">
-            {!role && <RoleSelection onJoin={handleJoin} onCreate={handleCreate} onResume={(c)=>{setSessionCode(c.toUpperCase()); setRole('instructor');}} hasBanks={Object.keys(quizBanks).length > 0} onImport={(b)=>{setQuizBanks(b); localStorage.setItem('secure_quiz_banks_v10', JSON.stringify(b)); showToast('題庫載入成功');}} />}
+            {!role && <RoleSelection onJoin={handleJoin} onCreate={handleCreate} onResume={(c)=>{setSessionCode(c.toUpperCase()); setRole('instructor');}} hasBanks={Object.keys(quizBanks).length > 0} onImport={(b)=>{setQuizBanks(b); localStorage.setItem('secure_quiz_banks_final', JSON.stringify(b)); showToast('題庫載入成功');}} />}
             
             {role === 'instructor' && sessionData && (
               <InstructorView 
-                code={sessionCode} 
-                session={sessionData} 
-                students={allAnswersData} 
-                db={db} 
-                showToast={showToast} 
-                quizBanks={quizBanks} 
-                setQuizBanks={(b)=>{setQuizBanks(b); localStorage.setItem('secure_quiz_banks_v10', JSON.stringify(b));}} 
+                code={sessionCode} session={sessionData} students={allAnswersData} db={db} showToast={showToast} quizBanks={quizBanks} 
+                setQuizBanks={(b)=>{setQuizBanks(b); localStorage.setItem('secure_quiz_banks_final', JSON.stringify(b));}} 
               />
             )}
             
@@ -210,7 +196,6 @@
       );
     }
 
-    // --- 頁面元件：角色選擇 ---
     function RoleSelection({ onJoin, onCreate, onResume, hasBanks, onImport }) {
       const [code, setCode] = useState('');
       const [name, setName] = useState('');
@@ -220,7 +205,11 @@
       useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const codeFromUrl = urlParams.get('code');
-        if (codeFromUrl) { setCode(codeFromUrl.toUpperCase()); setIsStudentLink(true); }
+        if (codeFromUrl) { 
+          const c = codeFromUrl.toUpperCase();
+          setCode(c); 
+          setIsStudentLink(true); 
+        }
       }, []);
 
       const importTrigger = (e) => {
@@ -229,7 +218,7 @@
         const reader = new FileReader();
         reader.onload = (ev) => {
           try { onImport(JSON.parse(ev.target.result)); } 
-          catch (err) { alert('JSON 格式錯誤'); }
+          catch (err) { alert('JSON 格式錯誤，無法載入。'); }
         };
         reader.readAsText(file);
       };
@@ -241,7 +230,7 @@
             <div className="space-y-4">
               <input type="text" placeholder="您的真實姓名" className="w-full p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" value={name} onChange={e => setName(e.target.value)} />
               <input type="text" placeholder="輸入 4 碼測驗代碼" className="w-full p-4 bg-slate-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono tracking-widest uppercase" value={code} onChange={e => setCode(e.target.value)} />
-              <button onClick={() => onJoin(code, name)} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action">進入教室</button>
+              <button onClick={() => onJoin(code, name)} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action">進入測驗室</button>
             </div>
           </div>
 
@@ -253,7 +242,7 @@
                   <p className="text-xs font-bold text-indigo-600 mb-3 uppercase tracking-tighter flex items-center justify-center gap-1"><Lock className="w-3 h-3"/> 安全機制：程式內無預設題目</p>
                   {hasBanks ? (
                     <div className="flex items-center justify-center gap-2 text-green-600 font-bold text-sm bg-green-50 p-3 rounded-lg border border-green-200">
-                       <CheckCircle className="w-4 h-4"/> 題庫已載入，可建立測驗室
+                       <CheckCircle className="w-4 h-4"/> 題庫已就緒，可點下方建立
                     </div>
                   ) : (
                     <label className="bg-white border-2 border-dashed border-indigo-200 p-6 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-100 transition-colors group">
@@ -278,7 +267,6 @@
       );
     }
 
-    // --- 頁面元件：講師儀表板 ---
     function InstructorView({ code, session, students, db, showToast, quizBanks, setQuizBanks }) {
       const [showFullBankPreview, setShowFullBankPreview] = useState(false);
       const [showResultsModal, setShowResultsModal] = useState(false);
@@ -309,24 +297,18 @@
         }
         await updateDoc(sRef, { questions: updatedQuestions });
         setEditingIndex(null);
-        showToast('修改成功');
+        showToast('內容修正成功');
       };
 
-      // 匯出功能：學生作答內容
-      const exportStudentAnswers = () => {
-        if (students.length === 0) return alert('目前沒有學生資料可供匯出');
-        const fileName = `${session.quizTitle}_學生作答紀錄.json`;
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
-          quizTitle: session.quizTitle,
-          sessionCode: code,
-          exportedAt: new Date().toLocaleString(),
-          results: students
-        }, null, 2));
+      const exportAnswers = () => {
+        if (students.length === 0) return alert('目前沒有作答資料');
+        const fileName = `${session.quizTitle}_作答紀錄.json`;
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ quiz: session.quizTitle, date: new Date().toLocaleString(), data: students }, null, 2));
         const anchor = document.createElement('a');
         anchor.setAttribute("href", dataStr);
         anchor.setAttribute("download", fileName);
         anchor.click();
-        showToast(`已匯出學生資料`);
+        showToast('已匯出作答 JSON');
       };
 
       useEffect(() => {
@@ -339,82 +321,64 @@
       return (
         <div className="space-y-6">
           
-          {/* Modal: 作答總表檢視 */}
+          {/* Modal: 作答總表 */}
           {showResultsModal && (
-            <div className="fixed inset-0 bg-slate-900/90 z-[200] flex items-center justify-center p-4 backdrop-blur-md">
+            <div className="fixed inset-0 bg-slate-900/95 z-[200] flex items-center justify-center p-4 backdrop-blur-md">
                <div className="bg-white w-full max-w-7xl h-full rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
                   <div className="p-8 border-b flex justify-between items-center bg-indigo-50">
-                    <div>
-                       <h2 className="text-2xl font-black text-indigo-900 flex items-center gap-2"><ClipboardList className="w-7 h-7"/> 測驗結果總表</h2>
-                       <p className="text-indigo-600 text-sm font-bold uppercase tracking-widest mt-1">即時同步監控全班作答內容</p>
-                    </div>
+                    <h2 className="text-2xl font-black text-indigo-900 flex items-center gap-2"><ClipboardList /> 學生作答內容總表</h2>
                     <div className="flex gap-3">
-                      <button onClick={exportStudentAnswers} className="bg-emerald-600 text-white px-5 py-2 rounded-xl font-bold btn-quiz-action flex items-center gap-2 shadow-lg"><Database className="w-4 h-4"/> 匯出學生資料 JSON</button>
-                      <button onClick={() => setShowResultsModal(false)} className="p-3 bg-white border border-slate-200 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"><X className="w-6 h-6"/></button>
+                      <button onClick={exportAnswers} className="bg-emerald-600 text-white px-5 py-2 rounded-xl font-bold btn-quiz-action flex items-center gap-2"><Database className="w-4 h-4"/> 匯出 JSON</button>
+                      <button onClick={() => setShowResultsModal(false)} className="p-3 bg-white border rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500"><X /></button>
                     </div>
                   </div>
-                  <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar bg-slate-100/30">
-                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                      <table className="w-full text-left border-collapse min-w-[800px]">
-                        <thead>
-                          <tr className="bg-slate-800 text-white uppercase text-xs tracking-tighter">
-                            <th className="p-5 font-black sticky left-0 bg-slate-800 z-10 w-40">學生姓名</th>
-                            <th className="p-5 font-black text-center w-24">目前分數</th>
+                  <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
+                      <thead>
+                        <tr className="bg-slate-800 text-white text-xs">
+                          <th className="p-4 sticky left-0 bg-slate-800 z-10">姓名</th>
+                          <th className="p-4 text-center">總分</th>
+                          {session.questions.map((_, i) => <th key={i} className="p-4 border-l border-slate-700">Q{i+1} 內容</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students.map((s, idx) => (
+                          <tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b`}>
+                            <td className="p-4 font-bold text-indigo-900 sticky left-0 bg-inherit shadow-md">{s.studentName}</td>
+                            <td className="p-4 text-center font-black text-indigo-600">{s.score || 0}</td>
                             {session.questions.map((_, i) => (
-                              <th key={i} className="p-5 font-black border-l border-slate-700 min-w-[200px]">Q{i+1} 作答內容</th>
+                              <td key={i} className="p-4 border-l text-xs text-slate-600 italic max-w-xs truncate" title={s.answers[i] || '未答'}>
+                                {s.answers[i] || '-'}
+                              </td>
                             ))}
                           </tr>
-                        </thead>
-                        <tbody>
-                          {students.map((s, idx) => (
-                            <tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} border-b hover:bg-indigo-50/30 transition-colors`}>
-                              <td className="p-5 font-bold text-indigo-900 sticky left-0 bg-inherit shadow-[5px_0_10px_-5px_rgba(0,0,0,0.1)]">{s.studentName}</td>
-                              <td className="p-5 text-center">
-                                <div className="bg-indigo-100 text-indigo-700 font-black rounded-lg py-1 px-2 text-sm">{s.score || 0}</div>
-                              </td>
-                              {session.questions.map((_, i) => (
-                                <td key={i} className="p-5 border-l text-xs text-slate-600 leading-relaxed max-w-xs">
-                                  {s.answers[i] ? (
-                                    <div className="bg-white p-3 rounded-xl border border-slate-200 italic shadow-inner line-clamp-4">
-                                      {s.answers[i]}
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-300 italic">未作答</span>
-                                  )}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                          {students.length === 0 && (
-                            <tr><td colSpan={session.questions.length + 2} className="p-20 text-center text-slate-400 italic font-medium">尚未有學生登入作答...</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="p-6 border-t text-center bg-white"><button onClick={() => setShowResultsModal(false)} className="bg-slate-800 text-white px-12 py-3 rounded-2xl font-bold btn-quiz-action">關閉結果總表</button></div>
+                  <div className="p-6 border-t text-center"><button onClick={() => setShowResultsModal(false)} className="bg-slate-800 text-white px-12 py-3 rounded-2xl font-bold btn-quiz-action">關閉</button></div>
                </div>
             </div>
           )}
 
-          {/* Modal: 題庫編輯器 (維持先前功能) */}
+          {/* Modal: 題庫檢視/編輯 */}
           {showFullBankPreview && (
             <div className="fixed inset-0 bg-slate-900/90 z-[200] flex items-center justify-center p-4 backdrop-blur-md">
                <div className="bg-white w-full max-w-5xl h-full rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
                   <div className="p-8 border-b flex justify-between items-center bg-slate-50">
                     <h2 className="text-2xl font-black text-indigo-900 flex items-center gap-2"><FileSearch /> 題庫檢視與修正</h2>
-                    <button onClick={() => { setShowFullBankPreview(false); setEditingIndex(null); }} className="p-2 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"><X className="w-8 h-8"/></button>
+                    <button onClick={() => { setShowFullBankPreview(false); setEditingIndex(null); }} className="p-2 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500"><X className="w-8 h-8"/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6 bg-slate-100/30">
                     {session.questions?.map((q, idx) => (
-                      <div key={idx} className={`bg-white p-6 rounded-3xl border transition-all ${editingIndex === idx ? 'border-indigo-500 ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm'}`}>
+                      <div key={idx} className={`bg-white p-6 rounded-3xl border ${editingIndex === idx ? 'border-indigo-500 ring-4 ring-indigo-50' : 'border-slate-200'}`}>
                          <div className="flex gap-4">
                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black flex-shrink-0 ${editingIndex === idx ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>{idx+1}</div>
                            <div className="flex-1">
                               {editingIndex === idx ? (
                                 <div className="space-y-4">
-                                  <textarea className="w-full p-3 border rounded-xl h-24 focus:ring-2 focus:ring-indigo-500 outline-none" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
-                                  <textarea className="w-full p-3 border rounded-xl h-32 focus:ring-2 focus:ring-indigo-500 outline-none" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})}/>
+                                  <textarea className="w-full p-3 border rounded-xl h-24 focus:ring-2 focus:ring-indigo-500" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
+                                  <textarea className="w-full p-3 border rounded-xl h-32 focus:ring-2 focus:ring-indigo-500" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})}/>
                                   <div className="flex gap-2">
                                     <button onClick={saveEdit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 btn-quiz-action"><Save className="w-4 h-4"/> 確定儲存</button>
                                     <button onClick={()=>setEditingIndex(null)} className="bg-slate-200 px-6 py-2 rounded-xl font-bold">取消</button>
@@ -426,7 +390,7 @@
                                     <h3 className="text-lg font-bold text-slate-800 leading-relaxed pr-4">{q.question}</h3>
                                     <button onClick={()=> { setEditingIndex(idx); setEditForm({question:q.question, answer:q.answer}); }} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 className="w-5 h-5"/></button>
                                   </div>
-                                  <div className="mt-4 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-inner italic text-emerald-900 whitespace-pre-wrap">{q.answer}</div>
+                                  <div className="mt-4 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 text-emerald-900 whitespace-pre-wrap">{q.answer}</div>
                                 </>
                               )}
                            </div>
@@ -434,17 +398,17 @@
                       </div>
                     ))}
                   </div>
-                  <div className="p-6 border-t text-center bg-white"><button onClick={() => setShowFullBankPreview(false)} className="bg-slate-800 text-white px-12 py-3 rounded-2xl font-bold btn-quiz-action">結束檢視</button></div>
+                  <div className="p-6 border-t text-center"><button onClick={() => setShowFullBankPreview(false)} className="bg-slate-800 text-white px-12 py-3 rounded-2xl font-bold btn-quiz-action">結束檢視</button></div>
                </div>
             </div>
           )}
 
-          {/* 主控制面板 */}
+          {/* 控制面板 */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-              <h2 className="text-xl font-bold text-indigo-900">講師主控面板</h2>
+              <h2 className="text-xl font-bold text-indigo-900 tracking-tight">測驗控制中心</h2>
               <div className="flex gap-4">
-                {session.status==='sync_active' && <TimerDisplay endTime={session.questionEndTime} label="當前題剩餘" />}
+                {session.status==='sync_active' && <TimerDisplay endTime={session.questionEndTime} label="當前題倒數" />}
                 <TimerDisplay endTime={session.totalEndTime} label="測驗總倒數" />
               </div>
             </div>
@@ -457,39 +421,40 @@
                     <button onClick={() => {
                       const ta = document.createElement("textarea"); ta.value = getShareableUrl(code);
                       document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-                      showToast('邀請連結已複製');
+                      showToast('學生網址已複製');
                     }} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs btn-quiz-action">複製連結</button>
                   </div>
                   
-                  <div className="bg-slate-50 p-4 rounded-xl border flex justify-between items-center gap-2">
-                    <button onClick={() => setShowFullBankPreview(true)} className="bg-white border-2 border-indigo-600 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black btn-quiz-action flex items-center gap-1 shadow-sm"><FileSearch className="w-4 h-4"/> 檢視/修正題庫</button>
-                    <button onClick={() => setShowResultsModal(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black btn-quiz-action flex items-center gap-1 shadow-md"><ClipboardList className="w-4 h-4"/> 查看作答總表</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowFullBankPreview(true)} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black btn-quiz-action flex items-center justify-center gap-1 shadow-sm"><FileSearch className="w-4 h-4"/> 檢視/修正題庫</button>
+                    <button onClick={() => setShowResultsModal(true)} className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black btn-quiz-action flex items-center justify-center gap-1 shadow-md"><ClipboardList className="w-4 h-4"/> 作答即時總表</button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400">每題秒數</label><input type="number" className="w-full p-2.5 bg-white border rounded-xl" value={session.perQuestionTime} onChange={e => updateDoc(sRef, { perQuestionTime: Number(e.target.value) })} /></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400">總時間(分)</label><input type="number" className="w-full p-2.5 bg-white border rounded-xl" value={session.totalQuizTime} onChange={e => updateDoc(sRef, { totalQuizTime: Number(e.target.value) })} /></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400">派題方式</label><select className="w-full p-2.5 bg-white border rounded-xl" value={session.autoAdvance} onChange={e => updateDoc(sRef, { autoAdvance: e.target.value === 'true' })}><option value="false">手動</option><option value="true">自動</option></select></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400">每題(秒)</label><input type="number" className="w-full p-2.5 bg-white border rounded-xl" value={session.perQuestionTime} onChange={e => updateDoc(sRef, { perQuestionTime: Number(e.target.value) })} /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400">總時(分)</label><input type="number" className="w-full p-2.5 bg-white border rounded-xl" value={session.totalQuizTime} onChange={e => updateDoc(sRef, { totalQuizTime: Number(e.target.value) })} /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400">派題</label><select className="w-full p-2.5 bg-white border rounded-xl" value={session.autoAdvance} onChange={e => updateDoc(sRef, { autoAdvance: e.target.value === 'true' })}><option value="false">手動</option><option value="true">自動</option></select></div>
                   </div>
                 </div>
                 <div className="flex flex-col justify-center gap-3">
-                  <button onClick={() => updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, totalEndTime: Date.now() + session.totalQuizTime * 60000, questionEndTime: Date.now() + session.perQuestionTime * 1000 })} disabled={students.length === 0} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold disabled:opacity-30 shadow-lg btn-quiz-action">啟動 同步測驗</button>
+                  <button onClick={() => updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, totalEndTime: Date.now() + session.totalQuizTime * 60000, questionEndTime: Date.now() + session.perQuestionTime * 1000 })} disabled={students.length === 0} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold disabled:opacity-30 shadow-lg btn-quiz-action">啟動 統一同步測驗</button>
                   <button onClick={() => updateDoc(sRef, { status: 'async_active', totalEndTime: Date.now() + session.totalQuizTime * 60000 })} disabled={students.length === 0} className="bg-white border-2 border-indigo-600 text-indigo-700 py-4 rounded-2xl font-bold disabled:opacity-30 btn-quiz-action">開放 學生各自作答</button>
-                  {students.length === 0 && <p className="text-center text-[10px] text-red-500 font-bold animate-pulse">請等待學生加入測驗室</p>}
+                  {students.length === 0 && <p className="text-center text-[10px] text-red-500 font-bold animate-pulse">（等待學生加入測驗室）</p>}
                 </div>
               </div>
             ) : (
               <div className="flex justify-between items-center bg-slate-900 text-white p-5 rounded-2xl shadow-xl">
-                <p className="font-bold flex items-center gap-2"><Play className="w-5 h-5 fill-indigo-400" /> 正派發：{session.quizTitle}</p>
+                <p className="font-bold flex items-center gap-2"><Play className="w-5 h-5 fill-indigo-400" /> 正進行：{session.quizTitle}</p>
                 <div className="flex gap-3">
-                  {session.status === 'sync_active' && <button onClick={nextQuestion} className="bg-white text-indigo-900 px-8 py-2 rounded-xl font-bold btn-quiz-action">{session.currentQuestionIndex < totalQ - 1 ? '下一題' : '檢討'}</button>}
-                  <button onClick={() => setShowResultsModal(true)} className="bg-indigo-600 text-white px-8 py-2 rounded-xl font-bold btn-quiz-action flex items-center gap-2"><ClipboardList className="w-4 h-4"/> 作答監控</button>
+                  {session.status === 'sync_active' && <button onClick={nextQuestion} className="bg-white text-indigo-900 px-8 py-2 rounded-xl font-bold btn-quiz-action">{session.currentQuestionIndex < totalQ - 1 ? '發布下一題' : '進入檢討'}</button>}
+                  <button onClick={() => setShowResultsModal(true)} className="bg-indigo-600 text-white px-8 py-2 rounded-xl font-bold btn-quiz-action flex items-center gap-2"><ClipboardList className="w-4 h-4"/> 即時作答表</button>
                   <button onClick={handleForceEnd} className="bg-red-500 text-white px-8 py-2 rounded-xl font-bold hover:bg-red-600 btn-quiz-action flex items-center gap-2"><Square className="w-4 h-4" /> 結束測驗</button>
                 </div>
               </div>
             )}
           </div>
 
+          {/* 題目預覽 */}
           <div className="grid lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
@@ -499,14 +464,11 @@
                     <button onClick={() => {
                       const cur = session.currentQuestionIndex; const newR = session.revealedAnswers.includes(cur) ? session.revealedAnswers.filter(i => i !== cur) : [...session.revealedAnswers, cur];
                       updateDoc(sRef, { revealedAnswers: newR });
-                    }} className="text-xs bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold btn-quiz-action">{session.revealedAnswers.includes(session.currentQuestionIndex) ? '已公開解答' : '公開本題解答'}</button>
+                    }} className="text-xs bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold btn-quiz-action">{session.revealedAnswers.includes(session.currentQuestionIndex) ? '解答已公開' : '公開本題解答'}</button>
                   )}
                 </div>
                 <p className="text-2xl font-bold text-slate-700 leading-relaxed mb-8">{session.questions?.[session.currentQuestionIndex]?.question}</p>
-                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-inner">
-                  <h4 className="text-[10px] font-black text-emerald-600 uppercase mb-2">標準解答內容</h4>
-                  <p className="text-lg whitespace-pre-wrap leading-relaxed text-emerald-900 font-medium">{session.questions?.[session.currentQuestionIndex]?.answer}</p>
-                </div>
+                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 italic text-emerald-900 whitespace-pre-wrap">{session.questions?.[session.currentQuestionIndex]?.answer}</div>
                 {(session.status === 'review' || session.status === 'async_active') && (
                   <div className="mt-8 pt-8 border-t flex flex-wrap gap-2.5">
                     {session.questions.map((_, i) => <button key={i} onClick={() => updateDoc(sRef, { currentQuestionIndex: i })} className={`w-12 h-12 rounded-2xl font-bold transition-all btn-quiz-action ${session.currentQuestionIndex === i ? 'bg-indigo-600 text-white shadow-xl scale-110' : 'bg-slate-100 text-slate-400'}`}>{i + 1}</button>)}
@@ -514,23 +476,14 @@
                 )}
               </div>
             </div>
+            {/* 簡易學生名單 */}
             <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border h-[650px] flex flex-col">
-              <h3 className="text-lg font-bold flex items-center gap-2 border-b pb-4 text-slate-700 mb-4"><Users className="text-indigo-600" /> 在線學生 ({students.length})</h3>
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+              <h3 className="text-lg font-bold border-b pb-4 text-slate-700 mb-4 flex items-center gap-2"><Users className="text-indigo-600" /> 在線學生 ({students.length})</h3>
+              <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
                 {students.map(s => (
-                  <div key={s.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 transition-colors hover:bg-indigo-50/50">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="font-bold text-indigo-900 text-base">{s.studentName}</span>
-                      {session.status === 'review' && (
-                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border shadow-sm">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase">SCORE</span>
-                          <input type="number" className="w-10 p-0 text-center font-bold text-indigo-600 bg-transparent outline-none" value={s.score || 0} onChange={e => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', s.id), { score: Number(e.target.value) })} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500 bg-white p-4 rounded-xl border border-indigo-50 italic shadow-inner line-clamp-3">
-                      {s.answers[session.currentQuestionIndex] || '(尚未作答)'}
-                    </div>
+                  <div key={s.id} className="p-4 bg-slate-50 rounded-2xl border transition-colors hover:bg-indigo-50/50">
+                    <div className="flex justify-between items-center mb-2"><span className="font-bold text-indigo-900">{s.studentName}</span>{session.status === 'review' && <input type="number" className="w-10 text-center font-bold border rounded bg-white text-indigo-600" value={s.score || 0} onChange={e => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', s.id), { score: Number(e.target.value) })} />}</div>
+                    <div className="text-xs text-slate-500 line-clamp-2 italic">{s.answers[session.currentQuestionIndex] || '未作答'}</div>
                   </div>
                 ))}
               </div>
@@ -557,7 +510,7 @@
         <div className="flex flex-col items-center justify-center py-24 bg-white rounded-[3rem] shadow-2xl border border-slate-200 mt-10 animate-pulse">
            <Clock className="w-16 h-16 text-indigo-200 mb-6" />
            <h2 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">已進入等候室</h2>
-           <p className="text-slate-500 font-medium">請保持在此畫面，老師即將啟動測驗...</p>
+           <p className="text-slate-500 font-medium">連線成功！請等待老師啟動測驗...</p>
         </div>
       );
 
