@@ -17,14 +17,14 @@
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     
-    /* 關鍵：按鈕滑鼠滑過特效 */
+    /* 按鈕滑鼠滑過特效 (紅色背景 + 放大 10% + 白色文字) */
     .btn-quiz-action {
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .btn-quiz-action:hover:not(:disabled) {
       background-color: #ef4444 !important; 
       color: white !important; 
-      transform: scale(1.1); 
+      transform: scale(1.05); 
       z-index: 50;
       box-shadow: 0 10px 20px -5px rgba(239, 68, 68, 0.4);
     }
@@ -94,9 +94,8 @@
 
     const copyToClipboard = (text) => {
       try {
-         const textArea = document.createElement("textarea");
+         const textArea = document.body.appendChild(document.createElement("textarea"));
          textArea.value = text;
-         document.body.appendChild(textArea);
          textArea.select();
          document.execCommand('copy');
          document.body.removeChild(textArea);
@@ -149,13 +148,12 @@
           setErrorMsg("請先匯入題庫檔後再建立測驗室。");
           return;
         }
-        const newCode = Math.random().toString(36).substring(2, 6).toUpperCase();
         const firstBankKey = Object.keys(quizBanks)[0];
         const currentBank = quizBanks[firstBankKey];
-        
+        const newCode = Math.random().toString(36).substring(2, 6).toUpperCase();
         try {
           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', newCode), {
-            hostId: user.uid, status: 'lobby', quizBankId: firstBankKey, quizTitle: currentBank.name,
+            hostId: user.uid, status: 'lobby', quizBankId: firstBankKey, quizTitle: currentBank.name || "未命名題庫",
             questions: currentBank.questions, currentQuestionIndex: 0, 
             perQuestionUnit: 'seconds', perQuestionValue: 5,
             totalQuizUnit: 'minutes', totalQuizValue: 5,
@@ -183,7 +181,7 @@
         } catch (e) { setErrorMsg("加入失敗。"); }
       };
 
-      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse tracking-widest">Connecting to Cloud Server...</div>;
+      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse">Connecting...</div>;
 
       return (
         <div className="min-h-screen flex flex-col mobile-full-height">
@@ -233,11 +231,26 @@
       const [name, setName] = useState('');
       const [resCode, setResCode] = useState('');
 
-      useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const codeFromUrl = urlParams.get('code');
-        if (codeFromUrl) { setCode(codeFromUrl.toUpperCase()); }
-      }, []);
+      const handleImportFile = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            let banksToSet = {};
+            if (Array.isArray(data)) {
+              banksToSet = { "default": { name: file.name.replace('.json', ''), questions: data } };
+            } else if (data.questions && data.name) {
+              banksToSet = { "default": data };
+            } else {
+              banksToSet = data;
+            }
+            onImport(banksToSet);
+          } catch(err) { alert('JSON 格式錯誤'); }
+        };
+        reader.readAsText(file);
+      };
 
       return (
         <div className="mt-4 md:mt-10 grid md:grid-cols-2 gap-4 md:gap-8">
@@ -256,14 +269,7 @@
                 <label className="bg-white border-2 border-dashed border-indigo-200 p-3 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-100 transition-colors">
                    <Upload className="text-indigo-400 mb-1 w-5 h-5" />
                    <span className="text-indigo-700 font-bold text-xs">{hasBanks ? '變更題庫檔案' : '按此匯入題庫 JSON'}</span>
-                   <input type="file" className="hidden" accept=".json" onChange={e => {
-                     const file = e.target.files[0];
-                     if(file) {
-                       const reader = new FileReader();
-                       reader.onload = (ev) => onImport(JSON.parse(ev.target.result));
-                       reader.readAsText(file);
-                     }
-                   }}/>
+                   <input type="file" className="hidden" accept=".json" onChange={handleImportFile}/>
                 </label>
               </div>
               <button onClick={onCreate} className="w-full bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action">建立新測驗室</button>
@@ -286,53 +292,18 @@
       const [editForm, setEditForm] = useState({ question: '', answer: '', options: [] });
       
       const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code);
-      const totalQ = session.questions?.length || 0;
-
-      const getQuestionEndTime = () => {
-        if (session.perQuestionUnit === 'unlimited') return null;
-        const val = session.perQuestionValue || 5;
-        const multiplier = session.perQuestionUnit === 'minutes' ? 60000 : 1000;
-        return Date.now() + (val * multiplier);
-      };
-
-      const getTotalEndTime = () => {
-        if (session.totalQuizUnit === 'unlimited') return null;
-        const val = session.totalQuizValue || 5;
-        const multiplier = session.totalQuizUnit === 'hours' ? 3600000 : 60000;
-        return Date.now() + (val * multiplier);
-      };
-
-      const handleStartSubmissionMode = () => {
-        let multiplier = 24 * 60 * 60 * 1000; 
-        if (session.submissionUnit === 'minutes') multiplier = 60 * 1000;
-        if (session.submissionUnit === 'hours') multiplier = 60 * 60 * 1000;
-
-        updateDoc(sRef, {
-          status: 'submission_mode',
-          totalEndTime: Date.now() + ((session.submissionValue || 1) * multiplier)
-        });
-        showToast('已啟動回傳模式');
-      };
-
-      const nextQuestion = () => {
-        if (session.currentQuestionIndex < totalQ - 1) {
-          updateDoc(sRef, { currentQuestionIndex: session.currentQuestionIndex + 1, questionEndTime: getQuestionEndTime() });
-        } else { updateDoc(sRef, { status: 'review', questionEndTime: null, currentQuestionIndex: 0 }); }
-      };
 
       const saveEdit = async () => {
         const updatedQuestions = [...session.questions];
         updatedQuestions[editingIndex] = { ...updatedQuestions[editingIndex], ...editForm };
-        
         const updatedBanks = { ...quizBanks };
         if (updatedBanks[session.quizBankId]) {
            updatedBanks[session.quizBankId].questions = updatedQuestions;
            setQuizBanks(updatedBanks);
         }
-
         await updateDoc(sRef, { questions: updatedQuestions });
         setEditingIndex(null);
-        showToast('題目與選項修改成功！');
+        showToast('題目修改成功！');
       };
 
       const exportJSON = (data, name) => {
@@ -347,50 +318,17 @@
         showToast('已觸發匯出');
       };
 
-      useEffect(() => {
-        let t; if (session.status === 'sync_active' && session.autoAdvance && session.questionEndTime) {
-          const d = session.questionEndTime - Date.now();
-          if (d <= 0) nextQuestion(); else t = setTimeout(nextQuestion, d);
-        } return () => clearTimeout(t);
-      }, [session.status, session.currentQuestionIndex, session.questionEndTime]);
-
       return (
         <div className="space-y-6">
-          {/* Modal: 作答總表 */}
-          {showResultsModal && (
-            <div className="fixed inset-0 bg-slate-900/95 z-[200] flex items-center justify-center p-2 backdrop-blur-md">
-               <div className="bg-white w-full max-w-7xl h-full rounded-[2rem] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
-                  <div className="p-6 border-b flex justify-between items-center bg-indigo-50">
-                    <h2 className="text-xl font-black text-indigo-900 flex items-center gap-2"><ClipboardList /> 全體作答紀錄</h2>
-                    <div className="flex gap-2">
-                       <button onClick={()=>exportJSON(students, `${session.quizTitle}_學生作答`)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-xs"><Database className="w-4 h-4 inline mr-1"/> 匯出 JSON</button>
-                       <button onClick={() => setShowResultsModal(false)} className="p-2 border rounded-full btn-quiz-action"><X /></button>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-auto p-4 custom-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[1000px]">
-                      <thead><tr className="bg-slate-800 text-white text-[10px]"><th className="p-3 sticky left-0 bg-slate-800">學生</th><th className="p-3">狀態</th><th className="p-3">得分</th>{session.questions.map((_, i) => <th key={i} className="p-3 border-l border-slate-700">Q{i+1} 回答</th>)}</tr></thead>
-                      <tbody>{students.map((s, idx) => (<tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b text-xs`}><td className="p-3 font-bold sticky left-0 bg-inherit shadow-sm">{s.studentName}</td><td className="p-3">{s.status === 'submitted' ? '✅' : '📝'}</td><td className="p-3 font-black">{s.score || 0}</td>{session.questions.map((_, i) => (<td key={i} className="p-3 border-l text-slate-600 truncate max-w-[200px]">{s.answers?.[i] || '-'}</td>))}</tr>))}</tbody>
-                    </table>
-                  </div>
-               </div>
-            </div>
-          )}
-
-          {/* Modal: 題型檢視與修正 (新增匯出更新後 JSON 按鈕) */}
+          {/* Modal: 題庫檢視與修正 (包含匯出與選項編輯) */}
           {showFullBankPreview && (
             <div className="fixed inset-0 bg-slate-900/90 z-[200] flex items-center justify-center p-4 backdrop-blur-md">
                <div className="bg-white w-full max-w-5xl h-full rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
                   <div className="p-6 md:p-8 border-b flex flex-wrap justify-between items-center bg-slate-50 gap-4">
                     <h2 className="text-xl md:text-2xl font-black text-indigo-900 flex items-center gap-2"><FileSearch /> 題型檢視與修正</h2>
                     <div className="flex items-center gap-2">
-                       <button 
-                         onClick={() => exportJSON(session.questions, `${session.quizTitle}_更新題庫`)} 
-                         className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-xs flex items-center gap-2 shadow-md"
-                       >
-                         <Download className="w-4 h-4"/> 匯出更新後題庫 JSON
-                       </button>
-                       <button onClick={() => { setShowFullBankPreview(false); setEditingIndex(null); }} className="p-2 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500 btn-quiz-action"><X className="w-6 h-6 md:w-8 md:h-8"/></button>
+                       <button onClick={() => exportJSON(session.questions, `${session.quizTitle}_更新題庫`)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-xs flex items-center gap-2 shadow-md"><Download className="w-4 h-4"/> 匯出更新後題庫 JSON</button>
+                       <button onClick={() => { setShowFullBankPreview(false); setEditingIndex(null); }} className="p-2 rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500 btn-quiz-action"><X className="w-8 h-8"/></button>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar space-y-4 bg-slate-100/30">
@@ -401,58 +339,25 @@
                           <div className="flex-1">
                             {editingIndex === idx ? (
                               <div className="space-y-4">
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-400">題目敘述</label>
-                                  <textarea className="w-full p-3 border rounded-xl h-20 outline-none focus:ring-2 focus:ring-indigo-200" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
-                                </div>
-                                
+                                <textarea className="w-full p-3 border rounded-xl h-20 focus:ring-2 focus:ring-indigo-200" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
                                 {q.type === 'choice' && (
-                                  <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-slate-400">選項內容 (1-4)</label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                      {(editForm.options || []).map((opt, optIdx) => (
-                                        <div key={optIdx} className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-slate-400">{optIdx + 1}.</span>
-                                          <input 
-                                            type="text" 
-                                            className="flex-1 p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-100" 
-                                            value={opt} 
-                                            onChange={e => {
-                                              const newOpts = [...editForm.options];
-                                              newOpts[optIdx] = e.target.value;
-                                              setEditForm({...editForm, options: newOpts});
-                                            }}
-                                          />
-                                        </div>
-                                      ))}
-                                    </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {[0,1,2,3].map(i => (
+                                      <input key={i} type="text" className="p-2 border rounded-lg text-sm" value={editForm.options[i] || ''} onChange={e=>{
+                                        const newOpts = [...editForm.options]; newOpts[i] = e.target.value; setEditForm({...editForm, options: newOpts});
+                                      }} placeholder={`選項 ${i+1}`} />
+                                    ))}
                                   </div>
                                 )}
-
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-400">{q.type === 'choice' ? '正確答案編號 (1-4)' : '標準答案內容'}</label>
-                                  <textarea className="w-full p-3 border rounded-xl h-20 outline-none focus:ring-2 focus:ring-emerald-200" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})}/>
-                                </div>
-                                
-                                <div className="flex gap-2">
-                                  <button onClick={saveEdit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action">儲存修改</button>
-                                  <button onClick={()=>setEditingIndex(null)} className="bg-slate-200 text-slate-600 px-6 py-2 rounded-xl btn-quiz-action font-bold">取消</button>
-                                </div>
+                                <input type="text" className="w-full p-3 border rounded-xl text-emerald-700 font-bold" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})} placeholder="標準答案編號或內容" />
+                                <div className="flex gap-2"><button onClick={saveEdit} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action">儲存修改</button><button onClick={()=>setEditingIndex(null)} className="bg-slate-200 px-6 py-2 rounded-xl btn-quiz-action">取消</button></div>
                               </div>
                             ) : (
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <p className="text-md font-bold text-slate-800 leading-relaxed">{q.question}</p>
-                                  {q.type === 'choice' && (
-                                    <div className="grid grid-cols-2 gap-2 mt-2">
-                                      {q.options?.map((opt, i) => (
-                                        <div key={i} className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border">
-                                          {i+1}. {opt}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <div className="mt-3 text-sm text-emerald-700 bg-emerald-50 p-3 rounded-xl border border-emerald-100 whitespace-pre-wrap">標準解答：{q.answer}</div>
+                                  <p className="text-md font-bold">{q.question}</p>
+                                  {q.type === 'choice' && <div className="grid grid-cols-2 gap-2 mt-2">{q.options?.map((opt, i) => <div key={i} className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border">{i+1}. {opt}</div>)}</div>}
+                                  <div className="mt-3 text-sm text-emerald-700 bg-emerald-50 p-3 rounded-xl border border-emerald-100">標準解答：{q.answer}</div>
                                 </div>
                                 <button onClick={()=> { setEditingIndex(idx); setEditForm({question:q.question, answer:q.answer, options: q.options || []}); }} className="p-2 text-slate-400 hover:text-indigo-600 btn-quiz-action bg-slate-50 rounded-xl border"><Edit3 className="w-5 h-5"/></button>
                               </div>
@@ -467,104 +372,98 @@
             </div>
           )}
 
+          {/* Modal: 作答總表 */}
+          {showResultsModal && (
+            <div className="fixed inset-0 bg-slate-900/95 z-[200] flex items-center justify-center p-2 backdrop-blur-md">
+               <div className="bg-white w-full max-w-7xl h-full rounded-[2rem] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
+                  <div className="p-6 border-b flex justify-between items-center bg-indigo-50">
+                    <h2 className="text-xl font-black text-indigo-900 flex items-center gap-2"><ClipboardList /> 全體作答紀錄</h2>
+                    <div className="flex gap-2">
+                       <button onClick={()=>exportJSON(students, `${session.quizTitle}_學生作答`)} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-xs"><Database className="w-4 h-4 inline mr-1"/> 匯出 JSON</button>
+                       <button onClick={() => setShowResultsModal(false)} className="p-2 border rounded-full btn-quiz-action"><X /></button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[1000px]">
+                      <thead><tr className="bg-slate-800 text-white text-[10px]"><th className="p-3 sticky left-0 bg-slate-800">學生</th><th className="p-3">狀態</th><th className="p-3">得分</th>{session.questions.map((_, i) => <th key={i} className="p-3 border-l border-slate-700">Q{i+1}</th>)}</tr></thead>
+                      <tbody>{students.map((s, idx) => (<tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b text-xs`}><td className="p-3 font-bold sticky left-0 bg-inherit shadow-sm">{s.studentName}</td><td className="p-3">{s.status === 'submitted' ? '✅' : '📝'}</td><td className="p-3 font-black">{s.score || 0}</td>{session.questions.map((_, i) => (<td key={i} className="p-3 border-l text-slate-600 truncate max-w-[200px]">{s.answers?.[i] || '-'}</td>))}</tr>))}</tbody>
+                    </table>
+                  </div>
+               </div>
+            </div>
+          )}
+
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
-              <h2 className="text-xl font-bold text-indigo-900">講師主控台</h2>
+              <h2 className="text-xl font-bold text-indigo-900 tracking-tight">講師主控台</h2>
               <div className="flex gap-4">
                 <TimerDisplay endTime={session.questionEndTime} label="單題倒數" />
                 <TimerDisplay endTime={session.totalEndTime} label="總倒數" />
               </div>
             </div>
-
             <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex items-center gap-2 mb-6">
-              <span className="text-xs font-bold text-indigo-800">學生邀請連結：</span>
-              <input type="text" readOnly className="flex-1 bg-white text-xs p-2 rounded border font-mono text-slate-400 outline-none" value={getShareableUrl(code)} />
-              <button onClick={() => { copyToClipboard(getShareableUrl(code)); showToast('網址已複製'); }} className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold btn-quiz-action">複製連結</button>
+              <span className="text-xs font-bold text-indigo-800">測驗網址：</span>
+              <input type="text" readOnly className="flex-1 bg-white text-xs p-2 rounded border font-mono outline-none" value={getShareableUrl(code)} />
+              <button onClick={() => { copyToClipboard(getShareableUrl(code)); showToast('網址已複製'); }} className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold btn-quiz-action">複製</button>
             </div>
 
             {session.status === 'lobby' ? (
               <div className="grid md:grid-cols-2 gap-6 border-t pt-4">
                  <div className="space-y-4">
-                    <div className="flex gap-2">
-                       <button onClick={() => setShowFullBankPreview(true)} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 p-2 rounded-xl text-xs font-black btn-quiz-action shadow-sm flex items-center justify-center gap-2"><Edit3 className="w-3 h-3"/> 檢視/修正題庫</button>
-                    </div>
+                    <button onClick={() => setShowFullBankPreview(true)} className="w-full bg-white border-2 border-indigo-600 text-indigo-600 p-2 rounded-xl text-xs font-black btn-quiz-action shadow-sm flex items-center justify-center gap-2"><Edit3 className="w-3 h-3"/> 檢視/修正題庫</button>
                     <div className="grid grid-cols-1 gap-3 bg-slate-50 p-4 rounded-2xl border">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">1. 同步測驗：單題限時</label>
+                        <label className="text-[10px] font-bold text-slate-400">1. 同步測驗：單題限時</label>
                         <div className="flex gap-2">
-                           <select className="flex-1 p-2 bg-white border rounded-xl text-xs outline-none" value={session.perQuestionUnit || 'seconds'} onChange={e => updateDoc(sRef, { perQuestionUnit: e.target.value })}>
+                           <select className="flex-1 p-2 bg-white border rounded-xl text-xs" value={session.perQuestionUnit || 'seconds'} onChange={e => updateDoc(sRef, { perQuestionUnit: e.target.value })}>
                               <option value="unlimited">不設限</option>
                               <option value="seconds">幾秒</option>
                               <option value="minutes">幾分</option>
                            </select>
-                           {session.perQuestionUnit !== 'unlimited' && (
-                             <input type="number" className="w-20 p-2 bg-white border rounded-xl text-xs outline-none" value={session.perQuestionValue || 5} onChange={e => updateDoc(sRef, { perQuestionValue: Number(e.target.value) })} />
-                           )}
+                           {session.perQuestionUnit !== 'unlimited' && (<input type="number" className="w-20 p-2 bg-white border rounded-xl text-xs" value={session.perQuestionValue || 5} onChange={e => updateDoc(sRef, { perQuestionValue: Number(e.target.value) })} />)}
                         </div>
                       </div>
-
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">2. 同步測驗：測驗總時長</label>
+                        <label className="text-[10px] font-bold text-slate-400">2. 同步測驗：測驗總時長</label>
                         <div className="flex gap-2">
-                           <select className="flex-1 p-2 bg-white border rounded-xl text-xs outline-none" value={session.totalQuizUnit || 'minutes'} onChange={e => updateDoc(sRef, { totalQuizUnit: e.target.value })}>
+                           <select className="flex-1 p-2 bg-white border rounded-xl text-xs" value={session.totalQuizUnit || 'minutes'} onChange={e => updateDoc(sRef, { totalQuizUnit: e.target.value })}>
                               <option value="unlimited">不設限</option>
                               <option value="minutes">幾分</option>
                               <option value="hours">幾時</option>
                            </select>
-                           {session.totalQuizUnit !== 'unlimited' && (
-                             <input type="number" className="w-20 p-2 bg-white border rounded-xl text-xs outline-none" value={session.totalQuizValue || 5} onChange={e => updateDoc(sRef, { totalQuizValue: Number(e.target.value) })} />
-                           )}
+                           {session.totalQuizUnit !== 'unlimited' && (<input type="number" className="w-20 p-2 bg-white border rounded-xl text-xs" value={session.totalQuizValue || 5} onChange={e => updateDoc(sRef, { totalQuizValue: Number(e.target.value) })} />)}
                         </div>
                       </div>
-
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">3. 非同步回傳模式：回傳效期</label>
+                        <label className="text-[10px] font-bold text-slate-400">3. 非同步回傳模式：回傳效期</label>
                         <div className="flex gap-2">
-                           <select className="flex-1 p-2 bg-white border rounded-xl text-xs outline-none" value={session.submissionUnit || 'days'} onChange={e => updateDoc(sRef, { submissionUnit: e.target.value })}>
+                           <select className="flex-1 p-2 bg-white border rounded-xl text-xs" value={session.submissionUnit || 'days'} onChange={e => updateDoc(sRef, { submissionUnit: e.target.value })}>
                               <option value="minutes">分鐘</option>
                               <option value="hours">小時</option>
                               <option value="days">天</option>
                            </select>
-                           <input type="number" className="w-20 p-2 bg-white border rounded-xl text-xs outline-none" value={session.submissionValue || 1} onChange={e => updateDoc(sRef, { submissionValue: Number(e.target.value) })} />
+                           <input type="number" className="w-20 p-2 bg-white border rounded-xl text-xs" value={session.submissionValue || 1} onChange={e => updateDoc(sRef, { submissionValue: Number(e.target.value) })} />
                         </div>
                       </div>
                     </div>
                  </div>
-
                  <div className="flex flex-col justify-center gap-3">
-                    <button onClick={() => updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, totalEndTime: getTotalEndTime(), questionEndTime: getQuestionEndTime() })} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">啟動：同步競賽測驗</button>
-                    <button onClick={handleStartSubmissionMode} className="bg-emerald-600 text-white py-4 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">啟動：非同步回傳 (作業模式)</button>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => setShowResultsModal(true)} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-2xl font-bold btn-quiz-action text-xs">檢視作答紀錄</button>
-                    </div>
+                    <button onClick={() => updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, totalEndTime: Date.now() + (session.totalQuizValue * 60000), questionEndTime: Date.now() + (session.perQuestionValue * 1000) })} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">啟動：同步競賽測驗</button>
+                    <button onClick={() => updateDoc(sRef, { status: 'submission_mode', totalEndTime: null })} className="bg-emerald-600 text-white py-4 rounded-2xl font-bold btn-quiz-action text-sm shadow-lg">啟動：非同步作業模式</button>
+                    <button onClick={() => setShowResultsModal(true)} className="bg-slate-100 text-slate-700 py-3 rounded-2xl font-bold btn-quiz-action text-xs">檢視作答紀錄</button>
                  </div>
               </div>
             ) : (
               <div className="flex justify-between items-center bg-slate-900 text-white p-4 rounded-2xl">
-                 <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{session.status === 'submission_mode' ? '回傳模式' : '測驗進行中'}</span>
-                    <p className="font-bold text-sm">{session.quizTitle}</p>
-                 </div>
-                 <div className="flex gap-3">
-                   {session.status === 'sync_active' && <button onClick={nextQuestion} className="bg-white text-indigo-900 px-6 py-2 rounded-xl font-bold btn-quiz-action text-xs">下一題</button>}
-                   <button onClick={() => updateDoc(sRef, { status: 'review', totalEndTime: null, questionEndTime: null })} className="bg-red-500 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action text-xs">結束並收卷</button>
-                 </div>
+                 <div className="flex flex-col"><span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{session.status === 'submission_mode' ? '回傳模式' : '測驗中'}</span><p className="font-bold text-sm">{session.quizTitle}</p></div>
+                 <div className="flex gap-3"><button onClick={() => updateDoc(sRef, { status: 'review', totalEndTime: null, questionEndTime: null })} className="bg-red-500 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action text-xs">結束測驗並收卷</button></div>
               </div>
             )}
           </div>
           
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white p-6 rounded-3xl border shadow-sm">
-               <div className="flex justify-between items-center border-b pb-4 mb-4">
-                 <h3 className="text-lg font-bold">當前題目內容</h3>
-                 {(session.status === 'review' || session.status === 'submission_mode') && (
-                    <div className="flex gap-1 overflow-x-auto pb-2 custom-scrollbar">
-                       {session.questions.map((_, i) => (
-                         <button key={i} onClick={() => updateDoc(sRef, { currentQuestionIndex: i })} className={`w-8 h-8 shrink-0 rounded-lg font-bold text-[10px] ${session.currentQuestionIndex === i ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{i+1}</button>
-                       ))}
-                    </div>
-                 )}
-               </div>
+               <div className="flex justify-between items-center border-b pb-4 mb-4"><h3 className="text-lg font-bold">當前題目: Q{session.currentQuestionIndex+1}</h3></div>
                <p className="text-2xl font-bold text-slate-700 mb-6">{session.questions?.[session.currentQuestionIndex]?.question}</p>
                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 text-emerald-900 font-medium whitespace-pre-wrap">標準解答：{session.questions?.[session.currentQuestionIndex]?.answer}</div>
             </div>
@@ -594,15 +493,19 @@
         setLocalIdx(newIdx);
       };
 
-      const handleSave = () => {
+      const handleSaveAndNext = () => {
         onAnswer(activeIdx, text);
+        if (activeIdx < sessionData.questions.length - 1) {
+          setLocalIdx(activeIdx + 1);
+        } else {
+          setShowOverview(true);
+        }
       };
 
       const isSubmitted = myData?.status === 'submitted';
 
-      if (sessionData.status === 'lobby') return <div className="flex h-[60vh] flex-col items-center justify-center bg-white rounded-3xl animate-pulse"><Clock className="w-16 h-16 text-indigo-200 mb-6" /><h2 className="text-xl font-black">等待老師啟動測驗...</h2><p className="text-slate-400 text-sm mt-2 font-bold tracking-widest">候考室已就緒</p></div>;
+      if (sessionData.status === 'lobby') return <div className="flex h-[60vh] flex-col items-center justify-center bg-white rounded-3xl animate-pulse"><Clock className="w-16 h-16 text-indigo-200 mb-6" /><h2 className="text-xl font-black">等待老師啟動測驗...</h2></div>;
 
-      // --- 作答清單複查頁面 ---
       if (showOverview) {
         return (
           <div className="max-w-2xl mx-auto p-4 bg-white rounded-3xl shadow-xl animate-scale-in border border-slate-200 mt-4 flex flex-col h-[85vh]">
@@ -620,49 +523,37 @@
             </div>
             <div className="flex gap-4 pt-4 border-t">
               <button onClick={() => setShowOverview(false)} className="flex-1 p-4 bg-slate-800 text-white rounded-2xl font-bold btn-quiz-action text-sm">檢查答案</button>
-              <button onClick={() => {if(confirm('確定要送出作答嗎？送出後將無法再次修改內容。')){onFinalSubmit(); setShowOverview(false);}}} className="flex-1 p-4 bg-red-600 text-white rounded-2xl font-bold btn-quiz-action shadow-lg text-sm flex items-center justify-center gap-2">正式回傳作答 <Send className="w-5 h-5"/></button>
+              <button onClick={() => {if(confirm('確定要送出作答嗎？送出後將無法修改。')){onFinalSubmit(); setShowOverview(false);}}} className="flex-1 p-4 bg-red-600 text-white rounded-2xl font-bold btn-quiz-action shadow-lg text-sm flex items-center justify-center gap-2">正式回傳作答 <Send className="w-5 h-5"/></button>
             </div>
           </div>
         );
       }
 
-      // --- 主作答頁面 ---
       return (
         <div className="max-w-2xl mx-auto px-2 pb-10">
           {sessionData.status === 'review' && <div className="bg-red-600 text-white p-3 rounded-2xl text-center font-black text-sm mb-4 shadow-lg border-2 border-red-400">測驗已結束，答案已鎖定！</div>}
           {isSubmitted && <div className="bg-emerald-600 text-white p-3 rounded-2xl text-center font-black text-sm mb-4 shadow-lg border-2 border-emerald-400 animate-scale-in">作答已成功回傳老師端！</div>}
 
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center mb-4">
-             <div className="flex flex-col">
-               <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">{sessionData.quizTitle}</span>
-               <h2 className="text-md font-bold text-slate-800">第 {activeIdx + 1} 題 / {sessionData.questions.length}</h2>
-             </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center mb-4 shrink-0">
+             <div className="flex flex-col"><span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">{sessionData.quizTitle}</span><h2 className="text-md font-bold text-slate-800">第 {activeIdx + 1} 題 / {sessionData.questions.length}</h2></div>
              <div className="flex gap-2">
                 <TimerDisplay endTime={sessionData.questionEndTime} label="單題" alertMode={true}/>
                 <TimerDisplay endTime={sessionData.totalEndTime} label="總時" alertMode={false}/>
              </div>
           </div>
 
-          <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden mb-6">
-            <div className="p-6 bg-indigo-50/50 border-b question-box-limit">
-              <div className="text-lg md:text-xl font-bold text-slate-800 leading-tight">
-                 {q.question}
-              </div>
-            </div>
+          <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden mb-6 flex flex-col shrink-0">
+            <div className="p-6 bg-indigo-50/50 border-b question-box-limit"><div className="text-lg md:text-xl font-bold text-slate-800 leading-tight">{q.question}</div></div>
             <div className="p-6">
               {q.type === 'choice' ? (
                 <div className="grid grid-cols-1 gap-3">
                   {q.options?.map((opt, i) => {
                     const val = (i+1).toString();
-                    return (
-                      <button key={i} disabled={sessionData.status==='review' || isSubmitted} onClick={()=>{ setText(val); onAnswer(activeIdx, val); }} className={`p-4 rounded-2xl border-2 font-bold text-left text-sm transition-all ${text === val ? 'bg-red-500 text-white border-red-700 scale-[1.02]' : 'bg-white border-slate-200 hover:border-red-300'} btn-quiz-action`}>
-                        {opt}
-                      </button>
-                    );
+                    return (<button key={i} disabled={sessionData.status==='review' || isSubmitted} onClick={()=>{ setText(val); onAnswer(activeIdx, val); }} className={`p-4 rounded-2xl border-2 font-bold text-left text-sm transition-all ${text === val ? 'bg-red-500 text-white border-red-700 scale-[1.02]' : 'bg-white border-slate-200 hover:border-red-300'} btn-quiz-action`}>{opt}</button>);
                   })}
                 </div>
               ) : (
-                <textarea className="w-full p-4 border-2 rounded-2xl outline-none text-md h-32 focus:border-indigo-400 transition-all disabled:bg-slate-100 disabled:text-slate-400" placeholder="請在此輸入您的答案內容..." value={text} onChange={e => setText(e.target.value)} onBlur={handleSave} disabled={sessionData.status === 'review' || isSubmitted} />
+                <textarea className="w-full p-4 border-2 rounded-2xl outline-none text-md h-32 focus:border-indigo-400 transition-all disabled:bg-slate-100 disabled:text-slate-400" placeholder="請在此輸入您的答案內容..." value={text} onChange={e => setText(e.target.value)} onBlur={() => onAnswer(activeIdx, text)} disabled={sessionData.status === 'review' || isSubmitted} />
               )}
             </div>
           </div>
@@ -674,14 +565,10 @@
                 <button onClick={() => jumpTo(Math.min(sessionData.questions.length - 1, activeIdx + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="flex-1 sm:px-6 py-3 bg-slate-200 text-slate-700 rounded-2xl font-bold btn-quiz-action flex items-center justify-center gap-1 text-sm">下一題 <ChevronRight className="w-4 h-4"/></button>
               </div>
             )}
-            
             {!isSubmitted && sessionData.status !== 'review' && (
-              <button onClick={() => { handleSave(); setShowOverview(true); }} className="px-10 py-3 bg-red-600 text-white rounded-2xl font-bold btn-quiz-action shadow-lg flex items-center justify-center gap-2 text-sm">
-                送出作答 <Send className="w-4 h-4"/>
-              </button>
+              <button onClick={handleSaveAndNext} className="px-10 py-3 bg-red-600 text-white rounded-2xl font-bold btn-quiz-action shadow-lg flex items-center justify-center gap-2 text-sm">送出並下一題 <Send className="w-4 h-4"/></button>
             )}
           </div>
-
           {(sessionData.revealAll || sessionData.revealedAnswers?.includes(activeIdx)) && (
             <div className="mt-8 p-6 rounded-3xl bg-emerald-50 border-2 border-emerald-100 animate-scale-in">
               <h4 className="font-bold mb-2 flex items-center gap-2 text-emerald-800"><Eye className="w-5 h-5" /> 標準解答分析</h4>
@@ -697,29 +584,17 @@
       useEffect(() => { 
         if(!endTime) { setT(0); return; } 
         const tick = () => setT(Math.max(0, Math.floor((endTime - Date.now()) / 1000))); 
-        tick(); 
-        const i = setInterval(tick, 1000); 
-        return () => clearInterval(i); 
+        tick(); const i = setInterval(tick, 1000); return () => clearInterval(i); 
       }, [endTime]);
-      
-      if(!endTime) return (
-        <div className="px-2 py-1 rounded-xl border font-mono text-center bg-slate-50 text-slate-600 border-slate-200">
-          <div className="text-[8px] font-bold uppercase leading-none opacity-40">{label}</div>
-          <div className="text-xs font-bold leading-tight">不設限</div>
-        </div>
-      );
-
+      if(!endTime) return (<div className="px-2 py-1 rounded-xl border font-mono text-center bg-slate-50 text-slate-400 border-slate-200"><div className="text-[8px] font-bold uppercase leading-none opacity-40">{label}</div><div className="text-xs font-bold leading-tight">不設限</div></div>);
       const d = Math.floor(t / (24 * 3600)); 
       const h = Math.floor((t % (24 * 3600)) / 3600);
       const m = Math.floor((t % 3600) / 60).toString().padStart(2, '0');
       const s = (t % 60).toString().padStart(2, '0');
-
       return ( 
         <div className={`px-2 py-1 rounded-xl border font-mono text-center shadow-inner ${t < 60 && t > 0 && alertMode ? 'bg-red-50 text-red-600 animate-pulse border-red-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
           <div className="text-[8px] font-bold uppercase leading-none opacity-60 tracking-tighter">{label}</div>
-          <div className="text-xs font-bold leading-tight tracking-tighter">
-            {d > 0 ? `${d}天 ` : ''}{h > 0 ? `${h}:` : ''}{m}:{s}
-          </div>
+          <div className="text-xs font-bold leading-tight tracking-tighter">{d > 0 ? `${d}天 ` : ''}{h > 0 ? `${h}:` : ''}{m}:{s}</div>
         </div> 
       );
     }
