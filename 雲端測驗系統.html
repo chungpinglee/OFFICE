@@ -106,6 +106,27 @@
       return url.toString();
     };
 
+    // --- 強化版複製到剪貼簿，防阻擋 ---
+    const copyToClipboard = (text) => {
+      try {
+         if (navigator.clipboard && window.isSecureContext) {
+             navigator.clipboard.writeText(text);
+             return true;
+         } else {
+             const textArea = document.createElement("textarea");
+             textArea.value = text;
+             document.body.appendChild(textArea);
+             textArea.select();
+             document.execCommand('copy');
+             document.body.removeChild(textArea);
+             return true;
+         }
+      } catch (err) {
+         console.error('Copy failed', err);
+         return false;
+      }
+    };
+
     function App() {
       const [user, setUser] = useState(null);
       const [role, setRole] = useState(null);
@@ -122,7 +143,7 @@
         return saved ? JSON.parse(saved) : {};
       });
 
-      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3000); };
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 4000); };
 
       useEffect(() => {
         const init = async () => {
@@ -179,10 +200,18 @@
         try {
           const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', c));
           if (!snap.exists()) return setErrorMsg('找不到該測驗代碼，請確認老師是否已啟動測驗。');
+          
           const studentId = `${user.uid}_${n}`;
-          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${c}_${studentId}`), {
-            sessionId: c, studentId: studentId, studentName: n, answers: {}, score: 0, status: 'in_progress'
-          }, { merge: true });
+          const answerRef = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${c}_${studentId}`);
+          
+          // 🚀 核心修復：只在文件不存在時才建立，避免重新整理時清空答案
+          const answerSnap = await getDoc(answerRef);
+          if (!answerSnap.exists()) {
+            await setDoc(answerRef, {
+              sessionId: c, studentId: studentId, studentName: n, answers: {}, score: 0, status: 'in_progress', joinedAt: Date.now()
+            });
+          }
+          
           setSessionCode(c); setStudentName(n); setRole('student');
         } catch (e) { setErrorMsg("加入失敗，請檢查網路連線。"); }
       };
@@ -218,10 +247,15 @@
                 sessionData={sessionData} 
                 myData={allAnswersData.find(a => a.studentId === `${user.uid}_${studentName}`)} 
                 onAnswer={(idx, text) => {
-                  updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`), { [`answers.${idx}`]: text });
+                  const ref = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`);
+                  updateDoc(ref, { [`answers.${idx}`]: text }).catch(err => {
+                    console.error('Save failed', err);
+                    showToast('存檔連線微弱，系統將自動重試。');
+                  });
                 }} 
                 onFinalSubmit={async () => {
-                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`), { status: 'submitted', submittedAt: Date.now() });
+                  const ref = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`);
+                  await updateDoc(ref, { status: 'submitted', submittedAt: Date.now() });
                   showToast('全部答案已成功回傳給老師！');
                 }}
               />
@@ -349,10 +383,25 @@
         setEditingIndex(null); showToast('修改成功');
       };
 
+      // 🚀 核心修復：增強版匯出 JSON 功能，即使被瀏覽器阻擋也會複製到剪貼簿
       const exportJSON = (data, name) => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-        const anchor = document.createElement('a'); anchor.setAttribute("href", dataStr); anchor.setAttribute("download", `${name}.json`);
-        anchor.click();
+        const jsonStr = JSON.stringify(data, null, 2);
+        try {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
+          const anchor = document.createElement('a'); 
+          anchor.setAttribute("href", dataStr); 
+          anchor.setAttribute("download", `${name}.json`);
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          
+          copyToClipboard(jsonStr);
+          showToast('已成功觸發下載！(若瀏覽器阻擋，已自動為您複製到剪貼簿)');
+        } catch (err) {
+          console.error('Download error:', err);
+          copyToClipboard(jsonStr);
+          showToast('系統環境阻擋下載，已為您完整複製 JSON 到剪貼簿，請貼上即可！');
+        }
       };
 
       const importAnswers = (e) => {
@@ -396,7 +445,7 @@
                   <div className="flex-1 overflow-auto p-4 custom-scrollbar">
                     <table className="w-full text-left border-collapse min-w-[1000px]">
                       <thead><tr className="bg-slate-800 text-white text-[10px]"><th className="p-3 sticky left-0 bg-slate-800 z-10">學生姓名</th><th className="p-3 text-center">狀態</th><th className="p-3 text-center">分</th>{session.questions.map((_, i) => <th key={i} className="p-3 border-l border-slate-700 min-w-[150px]">Q{i+1} 回答</th>)}</tr></thead>
-                      <tbody>{students.map((s, idx) => (<tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b text-xs`}><td className="p-3 font-bold text-indigo-900 sticky left-0 bg-inherit shadow-md">{s.studentName}</td><td className="p-3 text-center">{s.status === 'submitted' ? '✅ 已回傳' : '📝 作答中'}</td><td className="p-3 text-center font-black">{s.score || 0}</td>{session.questions.map((_, i) => (<td key={i} className="p-3 border-l text-slate-600 max-w-xs truncate">{s.answers[i] || '-'}</td>))}</tr>))}</tbody>
+                      <tbody>{students.map((s, idx) => (<tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b text-xs`}><td className="p-3 font-bold text-indigo-900 sticky left-0 bg-inherit shadow-md">{s.studentName}</td><td className="p-3 text-center">{s.status === 'submitted' ? '✅ 已回傳' : '📝 作答中'}</td><td className="p-3 text-center font-black">{s.score || 0}</td>{session.questions.map((_, i) => (<td key={i} className="p-3 border-l text-slate-600 max-w-xs truncate" title={s.answers?.[i]}>{s.answers?.[i] || '-'}</td>))}</tr>))}</tbody>
                     </table>
                   </div>
                   <div className="p-4 border-t text-center"><button onClick={() => setShowResultsModal(false)} className="bg-slate-800 text-white px-10 py-3 rounded-2xl font-bold btn-quiz-action">關閉總表</button></div>
@@ -449,7 +498,7 @@
             <div className="mb-4 p-3 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center gap-2">
               <span className="text-xs font-bold text-indigo-800 whitespace-nowrap hidden sm:inline">學生邀請網址：</span>
               <input type="text" readOnly className="flex-1 bg-white text-[10px] md:text-xs p-2 rounded-lg border border-indigo-100 font-mono outline-none text-slate-500" value={getShareableUrl(code)} />
-              <button onClick={() => { const ta = document.createElement("textarea"); ta.value = getShareableUrl(code); document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); showToast('網址已複製'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs btn-quiz-action whitespace-nowrap shadow-sm">複製連結</button>
+              <button onClick={() => { copyToClipboard(getShareableUrl(code)); showToast('網址已複製'); }} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-xs btn-quiz-action whitespace-nowrap shadow-sm">複製連結</button>
             </div>
 
             {session.status === 'lobby' ? (
@@ -549,7 +598,6 @@
       const [localIdx, setLocalIdx] = useState(0);
       const [showOverview, setShowOverview] = useState(false);
       
-      // 🌟 判斷是否被老師綁定視角：若為同步模式且單題時效有設定秒數，學生才不能自行跳題
       const isSyncStrict = sessionData.status === 'sync_active' && sessionData.perQuestionUnit !== 'unlimited';
       const activeIdx = isSyncStrict ? sessionData.currentQuestionIndex : localIdx;
       
@@ -566,6 +614,35 @@
         } 
       }, [sessionData.currentQuestionIndex, sessionData.status]);
 
+      // 🚀 核心修復：跳轉題目前強制作出存檔，確保不漏失資料
+      const jumpTo = (newIdx) => {
+        if (text !== (myData?.answers?.[activeIdx] || '')) {
+          onAnswer(activeIdx, text);
+        }
+        setLocalIdx(newIdx);
+      };
+
+      const goOverview = () => {
+        if (text !== (myData?.answers?.[activeIdx] || '')) {
+          onAnswer(activeIdx, text);
+        }
+        setShowOverview(true);
+      };
+
+      const handleSaveAndNext = () => {
+        onAnswer(activeIdx, text); 
+        setSaved(true); 
+        setTimeout(() => setSaved(false), 2000);
+        
+        if (!isSyncStrict) {
+          if (activeIdx < sessionData.questions.length - 1) {
+            setLocalIdx(activeIdx + 1);
+          } else {
+            setShowOverview(true);
+          }
+        }
+      };
+
       const isRevealed = sessionData.revealAll || sessionData.revealedAnswers?.includes(activeIdx);
 
       if (sessionData.status === 'lobby') return <div className="flex h-[70vh] flex-col items-center justify-center bg-white rounded-3xl animate-pulse"><Clock className="w-16 h-16 text-indigo-200 mb-6" /><h2 className="text-xl font-black">已進入候考室</h2><p className="text-slate-500">等待教師啟動測驗模式...</p></div>;
@@ -576,9 +653,9 @@
             <h2 className="text-xl font-bold border-b pb-4 flex items-center gap-2 text-indigo-900"><LayoutList /> 作答清單複查</h2>
             <div className="flex-1 overflow-y-auto space-y-4 my-4 pr-2 custom-scrollbar">
               {sessionData.questions.map((q, i) => (
-                <div key={i} className={`p-4 rounded-2xl border transition-all ${myData.answers[i] ? 'bg-indigo-50 border-indigo-100' : 'bg-red-50 border-red-100'}`}>
+                <div key={i} className={`p-4 rounded-2xl border transition-all ${myData?.answers?.[i] ? 'bg-indigo-50 border-indigo-100' : 'bg-red-50 border-red-100'}`}>
                   <div className="flex justify-between items-start mb-2"><span className="font-bold text-xs">Q{i+1}. {q.question}</span><button onClick={()=>{setLocalIdx(i); setShowOverview(false);}} className="text-[10px] text-indigo-600 underline font-black btn-quiz-action px-2 py-1 rounded">修改</button></div>
-                  <p className="text-xs text-slate-600 bg-white p-3 rounded-xl border truncate italic">{myData.answers[i] || <span className="text-red-500 font-bold">尚未填寫</span>}</p>
+                  <p className="text-xs text-slate-600 bg-white p-3 rounded-xl border truncate italic">{myData?.answers?.[i] || <span className="text-red-500 font-bold">尚未填寫</span>}</p>
                 </div>
               ))}
             </div>
@@ -588,6 +665,8 @@
       }
 
       const isSubmitted = myData?.status === 'submitted';
+      const hasAnswer = text !== '' || myData?.answers?.[activeIdx];
+      const isModified = text !== (myData?.answers?.[activeIdx] || '');
 
       return (
         <div className="mobile-full-height max-w-2xl mx-auto px-2">
@@ -614,14 +693,17 @@
               <div className="answer-area-flex">
                 {q.type === 'choice' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 overflow-y-auto custom-scrollbar">
-                    {q.options?.map((opt, i) => (
-                      <button key={i} disabled={sessionData.status==='review' || isSubmitted} onClick={()=>{ setText((i+1).toString()); }} className={`p-4 rounded-2xl border-2 font-bold transition-all text-left text-sm ${text === (i+1).toString() ? 'bg-red-500 text-white border-red-700 scale-105 shadow-md' : 'bg-white border-slate-200 hover:border-red-300 text-slate-700'} btn-quiz-action`}>
-                        {opt}
-                      </button>
-                    ))}
+                    {q.options?.map((opt, i) => {
+                      const val = (i+1).toString();
+                      return (
+                        <button key={i} disabled={sessionData.status==='review' || isSubmitted} onClick={()=>{ setText(val); onAnswer(activeIdx, val); }} className={`p-4 rounded-2xl border-2 font-bold transition-all text-left text-sm ${text === val ? 'bg-red-500 text-white border-red-700 scale-105 shadow-md' : 'bg-white border-slate-200 hover:border-red-300 text-slate-700'} btn-quiz-action`}>
+                          {opt}
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <textarea className={`w-full p-4 border-2 rounded-2xl outline-none text-md leading-snug flex-1 mb-4 ${sessionData.status === 'review' || isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-white shadow-inner focus:border-indigo-400 transition-all'}`} placeholder={isSubmitted ? "已成功回傳" : "請輸入作答內容..."} value={text} onChange={e => setText(e.target.value)} disabled={sessionData.status === 'review' || isSubmitted} />
+                  <textarea className={`w-full p-4 border-2 rounded-2xl outline-none text-md leading-snug flex-1 mb-4 ${sessionData.status === 'review' || isSubmitted ? 'bg-slate-100 text-slate-400' : 'bg-white shadow-inner focus:border-indigo-400 transition-all'}`} placeholder={isSubmitted ? "已成功回傳" : "請輸入作答內容..."} value={text} onChange={e => setText(e.target.value)} onBlur={()=>onAnswer(activeIdx, text)} disabled={sessionData.status === 'review' || isSubmitted} />
                 )}
               </div>
               
@@ -630,30 +712,18 @@
                   {/* 🌟 當無時間限制(自由導覽模式)或是已經結束時，允許學生自行跳題查看 */}
                   {(!isSyncStrict || sessionData.status === 'review') && (
                     <>
-                      <button onClick={() => setLocalIdx(p => Math.max(0, p - 1))} disabled={activeIdx === 0} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronLeft className="w-5 h-5"/></button>
-                      <button onClick={() => setLocalIdx(p => Math.min(sessionData.questions.length - 1, p + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronRight className="w-5 h-5"/></button>
+                      <button onClick={() => jumpTo(Math.max(0, activeIdx - 1))} disabled={activeIdx === 0} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronLeft className="w-5 h-5"/></button>
+                      <button onClick={() => jumpTo(Math.min(sessionData.questions.length - 1, activeIdx + 1))} disabled={activeIdx === sessionData.questions.length - 1} className="w-10 h-10 bg-slate-100 rounded-xl font-bold btn-quiz-action flex items-center justify-center"><ChevronRight className="w-5 h-5"/></button>
                     </>
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {(!isSyncStrict && sessionData.status !== 'review' && !isSubmitted) && <button onClick={()=>setShowOverview(true)} className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-sm shadow-md flex items-center gap-1"><LayoutList className="w-4 h-4"/> 檢查所有答案</button>}
+                  {(!isSyncStrict && sessionData.status !== 'review' && !isSubmitted) && <button onClick={goOverview} className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold btn-quiz-action text-sm shadow-md flex items-center gap-1"><LayoutList className="w-4 h-4"/> 檢查所有答案</button>}
                   
-                  {/* 🌟 修改: 若有選取答案，則顯示「送出」按鈕 */}
-                  {sessionData.status !== 'review' && !isSubmitted && text !== '' && (
-                    <button onClick={()=>{
-                      onAnswer(activeIdx, text); 
-                      setSaved(true); 
-                      setTimeout(()=>setSaved(false), 2000);
-                      
-                      if (!isSyncStrict) {
-                        if (activeIdx < sessionData.questions.length - 1) {
-                          setLocalIdx(activeIdx + 1);
-                        } else {
-                          setShowOverview(true);
-                        }
-                      }
-                    }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action text-sm shadow-lg flex items-center gap-1">
-                      {text !== (myData.answers?.[activeIdx] || '') ? '送出 (修改)' : '送出'} <Send className="w-4 h-4"/>
+                  {/* 🌟 根據作答狀態顯示「送出」按鈕 */}
+                  {sessionData.status !== 'review' && !isSubmitted && hasAnswer && (
+                    <button onClick={handleSaveAndNext} className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-bold btn-quiz-action text-sm shadow-lg flex items-center gap-1">
+                      {isModified ? '送出 (修改)' : '送出'} <Send className="w-4 h-4"/>
                     </button>
                   )}
                 </div>
