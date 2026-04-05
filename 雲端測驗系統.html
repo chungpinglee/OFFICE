@@ -43,7 +43,7 @@
         "name": "中世紀音樂史 - 初階測驗 (10題)",
         "questions": [
           { "id": 1, "question": "請問「格雷果聖歌」在音樂形式、旋律發展與歌詞語言上有哪些主要特色？", "answer": "單曲調音樂（Monophony）、級進旋律、音域狹窄莊嚴、拉丁文歌詞。" },
-          { "id": 2, "question": "什麼是多利安調式（Dorian Mode）？它在譜面上最主要的特徵是什麼？", "answer": "教會調式之一，最主要特徵是結束在第一線的「Re」音上。" },
+          { "id": 2, "question": "什麼是多利安調式（Dorian Mode）？它在譜面上最主要的特徵是什麼？", "answer": "教會調式之一，特徵是結束在第一線的「Re」音上。" },
           { "id": 3, "question": "關於格雷果聖歌中歌詞與曲調的搭配關係，請簡述「音節式」、「紐姆式」與「花彩式」三者的差異。", "answer": "音節式：一字一音；紐姆式：一字數音；花彩式：一字多音。" },
           { "id": 4, "question": "在現代五線譜廣泛使用前，中世紀的紐姆譜（四線譜）是如何精確標示音高的？", "answer": "透過設定一條基準線並標示「譜號」（如 C 或 F 譜號）來約定絕對音高。" },
           { "id": 5, "question": "「奧干農」 (Organum) 是什麼？它在西方音樂史上有何重要地位？", "answer": "早期的複音音樂，在聖歌主聲部加上第二聲部。是多聲部音樂與對位法的起源。" },
@@ -64,8 +64,8 @@
           { "id": 5, "question": "什麼是「等節奏」 (Isorhythm) 手法？", "answer": "將固定的節奏模式 (Talea) 與旋律模式 (Color) 結合並反覆的數學化結構。" },
           { "id": 6, "question": "十四世紀「新藝術」 (Ars Nova) 在節奏與記譜上有何重大突破？", "answer": "允許二拍子與三拍子享有同等地位，並發明更細微的音符時值（Minima）。" },
           { "id": 7, "question": "馬肖創作的《聖母彌撒曲》具有什麼跨時代意義？", "answer": "史上第一部由單一作曲家將彌撒五個固定聲部完整譜寫成一體的多聲部作品。" },
-          { "id": 8, "question": "什麼是「定旋律」 (Cantus Firmus) 作曲手法？", "answer": "借用一段現成旋律（如聖歌）放慢速度作為基礎聲部(Tenor)，其他聲部圍繞其發展對位。" },
-          { "id": 9, "question": "「勃艮第樂派」在和聲聽覺上帶來了什麼改變？", "answer": "大量使用三度與六度音程，取代中世紀空洞的五八度，使音樂甜美飽滿。" },
+          { "id": 8, "question": "什麼是「定旋律」 (Cantus Firmus) 作作曲手法？", "answer": "借用一段現成旋律（如聖歌）放慢速度作為基礎聲部(Tenor)，其他聲部圍繞其發展對位。" },
+          { "id": 9, "question": "「勃艮第樂派」在和聲聽覺上帶來了什麼改變？", "answer": "大量使用三度與六度不完全協和音程，取代中世紀空洞的五八度，使音樂甜美飽滿。" },
           { "id": 10, "question": "「假低音」 (Fauxbourdon) 的演唱方式與特色為何？", "answer": "即興技巧。在最高聲部下方四度唱出第三聲部，聽起來像連續的六和弦進行。" }
         ]
       }
@@ -189,7 +189,10 @@
             )}
 
             {role === 'instructor' && sessionData && <InstructorView code={sessionCode} session={sessionData} students={allAnswersData} db={db} showToast={showToast} />}
-            {role === 'student' && sessionData && <StudentView session={sessionData} myData={allAnswersData.find(a => a.studentId === `${user.uid}_${studentName.replace(/[\/\.#$\[\]]/g, '_')}`)} db={db} studentKey={`${user.uid}_${studentName.replace(/[\/\.#$\[\]]/g, '_')}`} />}
+            {role === 'student' && sessionData && <StudentDashboard sessionData={sessionData} myData={allAnswersData.find(a => a.studentId === `${user.uid}_${studentName.replace(/[\/\.#$\[\]]/g, '_')}`)} onAnswer={(idx, text) => {
+                  const studentKey = `${user.uid}_${studentName.replace(/[\/\.#$\[\]]/g, '_')}`;
+                  updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${studentKey}`), { [`answers.${idx}`]: text });
+                }} />}
           </main>
 
           {errorMsg && <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[100]"><div className="bg-white p-6 rounded-2xl max-w-sm w-full text-center shadow-2xl"><AlertTriangle className="mx-auto text-red-500 mb-4" /><p>{errorMsg}</p><button onClick={()=>setErrorMsg('')} className="mt-4 bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold">確認</button></div></div>}
@@ -217,7 +220,7 @@
           await updateDoc(sRef, { 
             status: 'review', 
             questionEndTime: null, 
-            totalEndTime: null, // 停止總計時
+            totalEndTime: null, 
             currentQuestionIndex: 0 
           });
           showToast('已強制結束測驗');
@@ -239,8 +242,8 @@
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-indigo-900">講師主控台</h2>
               <div className="flex gap-4">
-                {session.status==='sync_active' && <Timer endTime={session.questionEndTime} label="本題倒數" />}
-                <Timer endTime={session.totalEndTime} label="總剩餘倒數" />
+                {session.status==='sync_active' && <TimerDisplay endTime={session.questionEndTime} label="本題倒數" />}
+                <TimerDisplay endTime={session.totalEndTime} label="總剩餘倒數" />
               </div>
             </div>
 
@@ -253,24 +256,27 @@
                     showToast('邀請連結已複製');
                   }} className="bg-indigo-600 text-white w-full py-3 rounded-xl font-bold text-sm shadow-md hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"><Copy className="w-4 h-4" /> 複製學生邀請連結</button>
                   
-                  <select className="w-full p-4 border rounded-xl bg-slate-50 font-bold" value={session.quizBankId} onChange={e=>updateDoc(sRef,{quizBankId:e.target.value, quizTitle:DEFAULT_QUIZ_BANKS[e.target.value].name, questions:DEFAULT_QUIZ_BANKS[e.target.value].questions})}>
+                  <select className="w-full p-4 border rounded-xl bg-slate-50 font-bold outline-none" value={session.quizBankId} onChange={e=>{
+                    const bank = DEFAULT_QUIZ_BANKS[e.target.value];
+                    updateDoc(sRef,{quizBankId:e.target.value, quizTitle:bank.name, questions:bank.questions});
+                  }}>
                     {Object.entries(DEFAULT_QUIZ_BANKS).map(([id,b])=><option key={id} value={id}>{b.name}</option>)}
                   </select>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">每題秒數 (同步用)</label>
-                      <input type="number" className="w-full p-3 border rounded-xl" value={session.perQuestionTime} onChange={e=>updateDoc(sRef,{perQuestionTime:Number(e.target.value)})} />
+                      <input type="number" className="w-full p-3 border rounded-xl outline-none" value={session.perQuestionTime} onChange={e=>updateDoc(sRef,{perQuestionTime:Number(e.target.value)})} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">總時間 (分鐘)</label>
-                      <input type="number" className="w-full p-3 border rounded-xl" value={session.totalQuizTime} onChange={e=>updateDoc(sRef,{totalQuizTime:Number(e.target.value)})} />
+                      <input type="number" className="w-full p-3 border rounded-xl outline-none" value={session.totalQuizTime} onChange={e=>updateDoc(sRef,{totalQuizTime:Number(e.target.value)})} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">派題方式</label>
-                      <select className="w-full p-3 border rounded-xl" value={session.autoAdvance} onChange={e=>updateDoc(sRef,{autoAdvance:e.target.value==='true'})}>
+                      <select className="w-full p-3 border rounded-xl outline-none" value={session.autoAdvance} onChange={e=>updateDoc(sRef,{autoAdvance:e.target.value==='true'})}>
                         <option value="false">手動跳題</option>
-                        <option value="true">自動跳題</option>
+                        <option value="true">自動計時</option>
                       </select>
                     </div>
                   </div>
@@ -300,15 +306,24 @@
           <div className="grid lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200">
-                <h3 className="text-xl font-bold mb-6 border-b pb-4 text-slate-800">Q{session.currentQuestionIndex+1} 題目預覽</h3>
+                <div className="flex justify-between items-center mb-6 border-b pb-4">
+                  <h3 className="text-xl font-bold text-slate-800">Q{session.currentQuestionIndex+1} 題目預覽</h3>
+                  {session.status==='review' && (
+                    <button onClick={()=>{
+                      const cur = session.currentQuestionIndex;
+                      const newR = session.revealedAnswers.includes(cur) ? session.revealedAnswers.filter(i => i !== cur) : [...session.revealedAnswers, cur];
+                      updateDoc(sRef, { revealedAnswers: newR });
+                    }} className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100 font-bold">{session.revealedAnswers.includes(session.currentQuestionIndex) ? '解答已公開' : '公開本題解答'}</button>
+                  )}
+                </div>
                 <p className="text-2xl font-bold text-slate-700 leading-relaxed mb-8">{session.questions?.[session.currentQuestionIndex]?.question}</p>
-                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 text-emerald-900 shadow-inner">
+                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-inner">
                   <h4 className="text-xs font-bold text-emerald-600 mb-2 uppercase">標準解答內容：</h4>
                   <p className="text-lg whitespace-pre-wrap leading-relaxed">{session.questions?.[session.currentQuestionIndex]?.answer}</p>
                 </div>
                 {(session.status === 'review' || session.status === 'async_active') && (
-                  <div className="mt-8 flex flex-wrap gap-2 pt-6 border-t">
-                    {session.questions.map((_,i)=><button key={i} onClick={()=>updateDoc(sRef,{currentQuestionIndex:i})} className={`w-10 h-10 rounded-2xl font-bold transition-all ${session.currentQuestionIndex===i?'bg-indigo-600 text-white shadow-lg scale-110':'bg-slate-100 text-slate-400'}`}>{i+1}</button>)}
+                  <div className="mt-8 pt-8 border-t flex flex-wrap gap-3">
+                    {session.questions.map((_,i)=><button key={i} onClick={()=>updateDoc(sRef,{currentQuestionIndex:i})} className={`w-12 h-12 rounded-2xl font-bold transition-all ${session.currentQuestionIndex===i?'bg-indigo-600 text-white shadow-lg scale-110':'bg-slate-100 text-slate-400'}`}>{i+1}</button>)}
                   </div>
                 )}
               </div>
