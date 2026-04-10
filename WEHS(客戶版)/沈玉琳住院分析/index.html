@@ -91,7 +91,49 @@
 
     <main class="max-w-6xl mx-auto px-6 pb-20">
         
+        <!-- 從原 index.html 恢復的影片區塊 -->
         <section class="mb-14">
+            <div class="video-wrapper">
+                <div class="video-container aspect-video">
+                    <video controls poster="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=1200" class="w-full h-full object-contain">
+                        <source src="沈玉琳.mp4" type="video/mp4">
+                        您的瀏覽器不支援影片播放。
+                    </video>
+                </div>
+                <div class="flex justify-between mt-4 px-2">
+                    <p class="text-[10px] text-slate-400 font-medium">資料來源：TVBS 電視台</p>
+                    <p class="text-[10px] text-slate-500">了解實際住院理賠案例</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 從原 index.html 恢復的完整收支分析區塊 (左右兩欄) -->
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-14">
+            <div class="nordic-card stats-card p-8 rounded-[2rem]">
+                <div class="flex items-center mb-6">
+                    <div class="p-2 bg-blue-50 rounded-lg text-blue-600 mr-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <h2 class="text-lg font-bold text-slate-700">每月收支明細 (30天)</h2>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                        <span class="text-slate-500 text-sm font-medium">每月病房支出</span>
+                        <span class="font-bold text-red-600">-$750,000 元</span>
+                    </div>
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                        <span class="text-slate-500 text-sm font-medium">每月保險理賠</span>
+                        <span class="font-bold text-emerald-600">+$900,000 元</span>
+                    </div>
+                    <div class="flex justify-between items-center pt-3">
+                        <span class="font-bold text-slate-800 text-lg">每月淨收益</span>
+                        <span class="font-bold text-2xl text-blue-600">+$150,000 元</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="nordic-card stats-card p-8 rounded-[2rem]">
                 <div class="flex items-center mb-6">
                     <div class="p-2 bg-indigo-50 rounded-lg text-indigo-600 mr-3">
@@ -118,6 +160,7 @@
             </div>
         </section>
 
+        <!-- 同仁公版特有：僅保留 WEHS 商品 -->
         <section class="mb-16">
             <h2 class="text-2xl font-bold mb-10 text-center text-white">實支實付帳戶型終身醫療險簡介</h2>
             <div class="max-w-2xl mx-auto">
@@ -150,7 +193,7 @@
             </div>
         </section>
 
-        <!-- 這裡移除了問卷按鈕，並微調了標題的間距 -->
+        <!-- 同仁公版特有：單純的諮詢區塊 -->
         <section class="bg-blue-600 rounded-[2rem] p-12 text-center text-white relative overflow-hidden shadow-2xl">
             <div class="relative z-10">
                 <h2 class="text-2xl md:text-3xl font-bold">若有進一步需要諮詢事項，歡迎聯絡我，謝謝!</h2>
