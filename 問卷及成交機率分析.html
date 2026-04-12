@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>雲端問卷系統 - WEHS AI 成交決策版</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    body { font-family: "Microsoft JhengHei", "微軟正黑體", sans-serif !important; }
+    @keyframes globalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .global-fade-in { animation: globalFadeIn 0.8s ease-out forwards; }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .btn-quiz-action { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+    .btn-quiz-action:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+    .btn-quiz-action:active:not(:disabled) { transform: scale(0.95); }
+    @keyframes scale-in { from { transform: scale(0.98); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .animate-scale-in { animation: scale-in 0.3s ease-out forwards; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans overflow-x-hidden">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef, useMemo } from 'https://esm.sh/react@18.2.0';
+    import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+    import { 
+      Play, Square, Clock, Users, CheckCircle, ChevronRight, 
+      ChevronLeft, Eye, ListChecks, ArrowRight, UserCircle, 
+      LogOut, RefreshCw, Copy, Link as LinkIcon, Send, 
+      Download, Upload, AlertTriangle, X, FileSearch, Edit3, Save, Lock, ClipboardList, Database, EyeOff, Calendar, LayoutList, BarChart3, PieChart, TrendingUp, Award, Table2, BookOpen, Sparkles, Calculator, Settings2, Trash2, ArrowUp, ArrowDown, Share2, FileJson, Info, BrainCircuit, MessageSquare, Target, MapPin
+    } from 'https://esm.sh/lucide-react@0.292.0';
+
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+    import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+    import { getFirestore, doc, setDoc, onSnapshot, collection, updateDoc, getDoc, getDocs, writeBatch } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'wehs-pro-full-system';
+    const FIXED_CODE = "1234";
+    const apiKey = ""; 
+
+    const AI_PROMPT_TEMPLATE = `你是一位專業的問卷轉換助手。請將問卷文字轉換為 JSON 格式。
+規則：
+1. 輸出格式為單純的 JSON 陣列。
+2. type 為 "choice" (選擇) 或 "essay" (簡答)。
+3. 選擇題需包含 "options" (4個) 與 "answer" (正確項編號 1-4)。
+4. 每一題需有遞增 id 與 weight (權重)。`;
+
+    const WEHS_DEFAULT_QUESTIONS = [
+      { "id": 1, "type": "choice", "question": "【清晰度】您認為本次提供的行銷調查影片及簡報內容是否清楚易懂？", "options": ["1. 非常清楚，能完全理解", "2. 大致清楚，能抓到重點", "3. 有點模糊，需要人解說", "4. 難以理解，看不懂"], "answer": "1", "weight": 20 },
+      { "id": 2, "type": "choice", "question": "【危機感】觀看影片後，是否激起您對於未來高齡醫療或財務風險的危機意識？", "options": ["1. 非常有感，覺得需要提早準備", "2. 有點感覺，但目前覺得還不急", "3. 沒什麼感覺，覺得自己已準備好", "4. 完全沒有感覺"], "answer": "1", "weight": 20 },
+      { "id": 3, "type": "choice", "question": "【現在需求】針對「現在」的階段，您最在意的保險規劃重點是什麼？", "options": ["1. 實支實付醫療與手術保障", "2. 重大傷病與癌症一次金", "3. 意外險與基本壽險保障", "4. 失能照護與長期照顧保障"], "answer": "1", "weight": 20 },
+      { "id": 4, "type": "choice", "question": "【未來擔憂】放眼「未來（如退休後或75歲後）」的階段，您最擔憂且在意的規劃是什麼？", "options": ["1. 高齡實支實付醫療險的延續", "2. 退休養老金與生活費來源", "3. 長期臥床的照護費用", "4. 資產傳傳承與稅務規劃"], "answer": "1", "weight": 20 },
+      { "id": 5, "type": "choice", "question": "【購買意願】如果現在有一款「夢幻保險商品」能完美補足您擔憂的缺口（如75歲後的醫療實支），您會考慮購買嗎？", "options": ["1. 絕對會考慮，請盡快安排時間討論", "2. 有興趣，但想先了解商品細節與保費", "3. 視情況而定，目前沒有急迫性", "4. 目前完全沒有任何購買意願"], "answer": "1", "weight": 20 },
+      { "id": 6, "type": "essay", "question": "其他建議或想詢問的事項：", "answer": "無", "weight": 0 }
+    ];
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "", 
+      authDomain: "musictest-1c0fb.firebaseapp.com",
+      projectId: "musictest-1c0fb",
+      storageBucket: "musictest-1c0fb.firebasestorage.app",
+      messagingSenderId: "416438714609",
+      appId: "1:416438714609:web:806f72c2e2d40804442950"
+    };
+    
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [role, setRole] = useState(null);
+      const [sessionCode, setSessionCode] = useState('');
+      const [studentName, setStudentName] = useState('');
+      const [sessionData, setSessionData] = useState(null);
+      const [allAnswersData, setAllAnswersData] = useState([]);
+      const [errorMsg, setErrorMsg] = useState('');
+      const [toastMsg, setToastMsg] = useState('');
+      const [view, setView] = useState('main');
+      const [quizBanks, setQuizBanks] = useState(() => {
+        const saved = localStorage.getItem('wehs_pro_banks');
+        const defaultBank = { "WEHS": { name: "WEHS 客戶問卷", questions: WEHS_DEFAULT_QUESTIONS } };
+        return saved ? { ...defaultBank, ...JSON.parse(saved) } : defaultBank;
+      });
+
+      const showToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3000); };
+
+      useEffect(() => {
+        const initAuth = async () => {
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(auth);
+          }
+        };
+        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, setUser);
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user || !sessionCode) return;
+        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode);
+        const unsubS = onSnapshot(sRef, (snap) => {
+          if (snap.exists()) setSessionData(snap.data());
+        });
+        const aRef = collection(db, 'artifacts', appId, 'public', 'data', 'answers');
+        const unsubA = onSnapshot(aRef, (snap) => {
+          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setAllAnswersData(docs.filter(a => a.sessionId === sessionCode));
+        });
+        return () => { unsubS(); unsubA(); };
+      }, [user, sessionCode]);
+
+      const handleCreate = async () => {
+        const bankKey = "WEHS";
+        const currentBank = quizBanks[bankKey];
+        const newCode = FIXED_CODE;
+        try {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', newCode), {
+            hostId: user.uid, 
+            status: 'lobby', 
+            quizBankId: bankKey, 
+            quizTitle: currentBank.name,
+            questions: currentBank.questions, 
+            currentQuestionIndex: 0, 
+            scoringMode: 'even',
+            gradingStep: 0,
+            perQuestionUnit: 'unlimited',
+            perQuestionValue: 0,
+            totalQuizUnit: 'unlimited',
+            totalQuizValue: 0,
+            createdAt: Date.now(),
+            aiAnalysis: null 
+          });
+          setSessionCode(newCode); setRole('instructor');
+        } catch (e) { setErrorMsg("建立失敗。"); }
+      };
+
+      const handleJoin = async (code, name) => {
+        if (!code || !name) return setErrorMsg('請填寫姓名與代碼');
+        const c = code.trim().toUpperCase();
+        const n = name.trim();
+        try {
+          const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', c));
+          if (!snap.exists()) return setErrorMsg('找不到該代碼。');
+          const studentId = `${user.uid}_${n}`;
+          const answerRef = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${c}_${studentId}`);
+          const aSnap = await getDoc(answerRef);
+          if (!aSnap.exists()) {
+            await setDoc(answerRef, { sessionId: c, studentId, studentName: n, answers: {}, status: 'in_progress', joinedAt: Date.now(), visitFeedback: "" });
+          }
+          setSessionCode(c); setStudentName(n); setRole('student');
+        } catch (e) { setErrorMsg("加入失敗。"); }
+      };
+
+      const handleImportJSON = (data) => {
+        if (data.fullDataPackage) {
+          setSessionData(data.session);
+          setAllAnswersData(data.answers);
+          setSessionCode(data.sessionCode);
+          setRole('instructor');
+          setView('analysis');
+          showToast('已恢復歷史數據分析');
+        } else {
+          setQuizBanks(prev => ({ ...prev, ...data }));
+          localStorage.setItem('wehs_pro_banks', JSON.stringify({ ...quizBanks, ...data }));
+          showToast('問卷題庫已更新');
+        }
+      };
+
+      if (!user) return <div className="h-screen flex items-center justify-center text-slate-400 font-bold animate-pulse tracking-widest uppercase">Initializing...</div>;
+
+      return (
+        <div className="min-h-screen flex flex-col global-fade-in">
+          <header className="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center h-16 md:h-20 shrink-0">
+            <h1 className="font-black flex items-center gap-2 text-base md:text-xl tracking-tighter">
+              <div className="bg-indigo-600 p-1.5 rounded-lg"><ListChecks size={20}/></div>
+              WEHS <span className="text-indigo-400">AI 成交分析版</span>
+            </h1>
+            {role && (
+              <div className="flex gap-2 items-center">
+                <div className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 hidden sm:flex items-center gap-2 text-xs">
+                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                   <span className="text-slate-400">{role === 'instructor' ? '業務端' : studentName}</span>
+                   <span className="font-mono font-bold text-indigo-400">{sessionCode}</span>
+                </div>
+                <button onClick={() => {setRole(null); setSessionCode(''); setView('main');}} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-4 py-1.5 rounded-xl text-xs font-bold transition-all border border-red-500/20">結束</button>
+              </div>
+            )}
+          </header>
+
+          <main className="flex-1 max-w-7xl mx-auto p-4 md:p-8 w-full overflow-y-auto custom-scrollbar">
+            {view === 'analysis' ? (
+              <AnalysisView session={sessionData} answers={allAnswersData} onBack={() => setView('main')} showToast={showToast} sessionCode={sessionCode} db={db} />
+            ) : (
+              <>
+                {!role && <WelcomeScreen onJoin={handleJoin} onCreate={handleCreate} onImport={handleImportJSON} />}
+                {role === 'instructor' && sessionData && (
+                   <InstructorDashboard session={sessionData} students={allAnswersData} db={db} code={sessionCode} showToast={showToast} onGoAnalysis={() => setView('analysis')} />
+                )}
+                {role === 'student' && sessionData && (
+                  <StudentDashboard 
+                    session={sessionData} 
+                    myData={allAnswersData.find(a => a.studentId === `${user.uid}_${studentName}`)} 
+                    onAnswer={(idx, val) => {
+                      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`);
+                      updateDoc(ref, { [`answers.${idx}`]: val });
+                    }}
+                    onFinalSubmit={async () => {
+                      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${user.uid}_${studentName}`);
+                      await updateDoc(ref, { status: 'submitted', submittedAt: Date.now() });
+                      showToast('回覆已成功送出');
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </main>
+
+          {toastMsg && (
+            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce z-[100] border border-slate-700">
+              <CheckCircle className="text-emerald-400" size={18} />
+              <span className="text-sm font-bold">{toastMsg}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function WelcomeScreen({ onJoin, onCreate, onImport }) {
+      const [name, setName] = useState('');
+      const [code, setCode] = useState(FIXED_CODE);
+
+      return (
+        <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 mt-4 md:mt-10 animate-scale-in">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
+            <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3"><UserCircle className="text-indigo-600" /> 客戶登入</h2>
+            <div className="space-y-4">
+              <input type="text" placeholder="您的姓名" className="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2" value={name} onChange={e=>setName(e.target.value)} />
+              <input type="text" placeholder="問卷代碼" className="w-full p-4 bg-slate-50 border rounded-2xl font-mono tracking-widest outline-none focus:ring-2 uppercase" value={code} onChange={e=>setCode(e.target.value)} />
+              <button onClick={()=>onJoin(code, name)} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg btn-quiz-action text-lg">進入填答</button>
+            </div>
+          </div>
+          <div className="bg-indigo-900 p-8 rounded-[2.5rem] text-white flex flex-col justify-between shadow-xl">
+             <div>
+               <h2 className="text-2xl font-black mb-4 flex items-center gap-3"><ShieldCheck /> 業務專區</h2>
+               <p className="text-indigo-200 text-sm mb-8 leading-relaxed">AI 驅動的數據分析，精準鎖定高潛力客戶。</p>
+               <div className="space-y-4">
+                  <button onClick={onCreate} className="w-full bg-white text-indigo-900 font-bold py-4 rounded-2xl btn-quiz-action shadow-lg">建立新問卷</button>
+                  <button onClick={() => {
+                    const i = document.createElement('input'); i.type = 'file'; i.accept = '.json';
+                    i.onchange = (e) => {
+                      const r = new FileReader(); r.onload = (ev) => onImport(JSON.parse(ev.target.result));
+                      r.readAsText(e.target.files[0]);
+                    }; i.click();
+                  }} className="w-full bg-indigo-800 text-indigo-100 border border-indigo-700 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 btn-quiz-action">
+                    <FileJson size={18} /> 匯入歷史 JSON 包
+                  </button>
+               </div>
+             </div>
+          </div>
+        </div>
+      );
+    }
+
+    function InstructorDashboard({ session, students, db, code, showToast, onGoAnalysis }) {
+      const [showAiModal, setShowAiModal] = useState(false);
+      const [showResultsModal, setShowResultsModal] = useState(false);
+      const [showEditModal, setShowEditModal] = useState(false);
+      const [editingIndex, setEditingIndex] = useState(null);
+      const [editForm, setEditForm] = useState({ question: '', answer: '', options: [], weight: 20 });
+      
+      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code);
+      const shareUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
+
+      useEffect(() => {
+        if (session.status === 'sync_active' && session.questionEndTime) {
+          const timer = setInterval(() => {
+            if (Date.now() > session.questionEndTime) {
+              const nextIdx = session.currentQuestionIndex + 1;
+              if (nextIdx < session.questions.length) {
+                const mul = session.perQuestionUnit === 'seconds' ? 1000 : 60000;
+                updateDoc(sRef, { currentQuestionIndex: nextIdx, questionEndTime: Date.now() + (session.perQuestionValue * mul) });
+              } else {
+                updateDoc(sRef, { status: 'review', questionEndTime: null });
+              }
+            }
+          }, 1000);
+          return () => clearInterval(timer);
+        }
+      }, [session.status, session.currentQuestionIndex, session.questionEndTime]);
+
+      const startSync = () => {
+        let qEnd = null;
+        if (session.perQuestionUnit !== 'unlimited') {
+           const mul = session.perQuestionUnit === 'seconds' ? 1000 : 60000;
+           qEnd = Date.now() + (session.perQuestionValue * mul);
+        }
+        updateDoc(sRef, { status: 'sync_active', currentQuestionIndex: 0, questionEndTime: qEnd });
+        showToast('已啟動同步競賽模式');
+      };
+
+      const startAsync = () => {
+        let tEnd = null;
+        if (session.totalQuizUnit !== 'unlimited') {
+           const mul = session.totalQuizUnit === 'minutes' ? 60000 : (session.totalQuizUnit === 'hours' ? 3600000 : 86400000);
+           tEnd = Date.now() + (session.totalQuizValue * mul);
+        }
+        updateDoc(sRef, { status: 'submission_mode', totalEndTime: tEnd });
+        showToast('已啟動非同步填答模式');
+      };
+
+      const saveQuestionEdit = async () => {
+        const updated = [...session.questions];
+        updated[editingIndex] = { ...updated[editingIndex], ...editForm };
+        await updateDoc(sRef, { questions: updated });
+        setEditingIndex(null);
+        showToast('修改成功');
+      };
+
+      return (
+        <div className="space-y-6 animate-scale-in">
+          {/* 上方按鈕區 */}
+          <div className="flex gap-4">
+             <button onClick={() => setShowEditModal(true)} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm btn-quiz-action shadow-sm">
+               <Edit3 size={18} /> 問卷內容修改與配分設定
+             </button>
+             <button onClick={onGoAnalysis} className="flex-1 bg-indigo-50 text-indigo-700 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm btn-quiz-action shadow-sm">
+               <BarChart3 size={18} /> 進入填答分析
+             </button>
+          </div>
+
+          {/* 網址區 */}
+          <div className="p-4 bg-indigo-50 rounded-[1.5rem] border border-indigo-100 flex items-center gap-3">
+             <span className="text-xs font-bold text-indigo-800 whitespace-nowrap">客戶問卷網址：</span>
+             <input readOnly value={shareUrl} className="flex-1 bg-white p-2 rounded-xl text-xs font-mono outline-none text-slate-500 border border-indigo-100" />
+             <button onClick={()=>{copyToClipboard(shareUrl); showToast('已複製連結');}} className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-xs font-bold btn-quiz-action whitespace-nowrap">複製連結</button>
+          </div>
+
+          {/* 主控制面板 */}
+          <div className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm border border-slate-200">
+            <div className="grid lg:grid-cols-2 gap-10">
+              <div className="space-y-8">
+                <div>
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-4">1. 計分與級距設定</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none" value={session.scoringMode} onChange={e=>updateDoc(sRef, {scoringMode: e.target.value})}>
+                      <option value="even">總分 100 平分</option>
+                      <option value="weighted">依權重計分</option>
+                    </select>
+                    <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none" value={session.gradingStep} onChange={e=>updateDoc(sRef, {gradingStep: Number(e.target.value)})}>
+                      <option value="0">精確給分</option>
+                      <option value="10">10 分一階</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-4">2. 同步：單題限時</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none" value={session.perQuestionUnit} onChange={e=>updateDoc(sRef, {perQuestionUnit: e.target.value})}>
+                      <option value="unlimited">不設限</option>
+                      <option value="seconds">秒</option>
+                      <option value="minutes">分</option>
+                    </select>
+                    {session.perQuestionUnit !== 'unlimited' && (
+                      <input type="number" className="w-full p-4 bg-slate-50 border rounded-2xl outline-none" value={session.perQuestionValue} onChange={e=>updateDoc(sRef, {perQuestionValue: Number(e.target.value)})} />
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-4">3. 同步：問卷總時長</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none" value={session.totalQuizUnit} onChange={e=>updateDoc(sRef, {totalQuizUnit: e.target.value})}>
+                      <option value="unlimited">不設限</option>
+                      <option value="minutes">分</option>
+                      <option value="hours">時</option>
+                    </select>
+                    {session.totalQuizUnit !== 'unlimited' && (
+                      <input type="number" className="w-full p-4 bg-slate-50 border rounded-2xl outline-none" value={session.totalQuizValue} onChange={e=>updateDoc(sRef, {totalQuizValue: Number(e.target.value)})} />
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-4 justify-center">
+                <button onClick={startSync} className="w-full py-6 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-indigo-100 btn-quiz-action">啟動：同步競賽模式</button>
+                <button onClick={startAsync} className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-emerald-100 btn-quiz-action">啟動：非同步填答模式</button>
+                <div className="grid grid-cols-2 gap-4">
+                   <button onClick={() => setShowResultsModal(true)} className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold flex items-center justify-center gap-2 btn-quiz-action text-sm">觀看客戶答案表</button>
+                   <button onClick={() => setShowAiModal(true)} className="py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-bold flex items-center justify-center gap-2 btn-quiz-action text-sm"><Sparkles size={16}/> AI 轉檔助手</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+               <div className="bg-white p-6 rounded-[2rem] border shadow-sm">
+                 <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold">當前題目 Q{session.currentQuestionIndex+1}</h4>
+                    <div className="flex gap-2">
+                      <TimerDisplay endTime={session.questionEndTime} label="單題剩餘" />
+                      <TimerDisplay endTime={session.totalEndTime} label="總剩餘" />
+                    </div>
+                 </div>
+                 <p className="text-2xl font-black text-slate-800 leading-relaxed">{session.questions[session.currentQuestionIndex]?.question}</p>
+               </div>
+            </div>
+            <div className="bg-white p-6 rounded-[2rem] border shadow-sm h-[400px] overflow-y-auto custom-scrollbar">
+               <h4 className="font-bold border-b pb-2 mb-4 flex items-center justify-between">
+                 <span>填答名單 ({students.length})</span>
+                 <button onClick={async () => {
+                   const batch = writeBatch(db);
+                   students.forEach(s => {
+                     let score = 0;
+                     session.questions.forEach((q, i) => {
+                       if (q.type === 'choice' && s.answers?.[i] === q.answer) {
+                         score += (Number(q.weight) || 0);
+                       }
+                     });
+                     batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'answers', s.id), { score: Math.round(score) });
+                   });
+                   await batch.commit(); showToast('重新計分完成');
+                 }} className="text-[10px] bg-slate-800 text-white px-2 py-1 rounded-md">重新計分</button>
+               </h4>
+               {students.map(s => (
+                 <div key={s.id} className="p-3 bg-slate-50 rounded-xl border mb-2 flex justify-between items-center">
+                   <div className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full ${s.status === 'submitted' ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`}></div>
+                     <span className="text-sm font-bold text-slate-700">{s.studentName}</span>
+                   </div>
+                   <span className="text-indigo-600 font-black">{s.score || 0}</span>
+                 </div>
+               ))}
+            </div>
+          </div>
+
+          {/* AI 轉檔助手 Modal */}
+          {showAiModal && (
+            <div className="fixed inset-0 bg-slate-900/90 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
+              <div className="bg-white w-full max-w-xl rounded-[2.5rem] p-8 animate-scale-in">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-black text-indigo-900 flex items-center gap-2"><Sparkles className="text-yellow-500" /> AI 轉檔助手</h3>
+                  <button onClick={()=>setShowAiModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X/></button>
+                </div>
+                <div className="bg-slate-50 p-6 rounded-2xl border mb-6">
+                  <p className="text-xs text-slate-400 mb-2 font-bold uppercase tracking-widest">使用說明</p>
+                  <p className="text-sm text-slate-600 mb-4">請複製下方提示詞，貼上至 AI 助手 (如 ChatGPT)，並將您的問卷文字傳送給它即可獲得 JSON 代碼。</p>
+                  <pre className="text-[10px] bg-slate-800 text-indigo-200 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap select-all font-mono">{AI_PROMPT_TEMPLATE}</pre>
+                </div>
+                <button onClick={()=>{copyToClipboard(AI_PROMPT_TEMPLATE); showToast('提示詞已複製');}} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 btn-quiz-action shadow-lg"><Copy size={18}/> 複製 AI 提示詞</button>
+              </div>
+            </div>
+          )}
+
+          {/* 客戶答案表 Modal */}
+          {showResultsModal && (
+            <div className="fixed inset-0 bg-slate-900/95 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
+               <div className="bg-white w-full max-w-7xl h-[85vh] rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden">
+                  <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                    <h3 className="text-xl font-black text-indigo-900 flex items-center gap-2"><ClipboardList /> 客戶填答總表</h3>
+                    <button onClick={() => setShowResultsModal(false)} className="p-2 hover:bg-slate-200 rounded-full"><X /></button>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+                    <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
+                      <thead className="sticky top-0 bg-slate-800 text-white">
+                        <tr>
+                          <th className="p-3">客戶姓名</th>
+                          <th className="p-3">得分</th>
+                          <th className="p-3">狀態</th>
+                          {session.questions.map((_, i) => <th key={i} className="p-3 whitespace-nowrap">Q{i+1}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {students.map((s, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 font-bold text-slate-700">{s.studentName}</td>
+                            <td className="p-3 font-black text-indigo-600">{s.score || 0}</td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.status === 'submitted' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {s.status === 'submitted' ? '已完成' : '填寫中'}
+                              </span>
+                            </td>
+                            {session.questions.map((_, qIdx) => (
+                              <td key={qIdx} className="p-3 text-slate-500 max-w-[150px] truncate" title={s.answers?.[qIdx]}>
+                                {s.answers?.[qIdx] || '-'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* 編輯問卷 Modal */}
+          {showEditModal && (
+            <div className="fixed inset-0 bg-slate-900/95 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
+               <div className="bg-white w-full max-w-4xl h-[85vh] rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden">
+                  <div className="p-6 border-b flex justify-between items-center bg-indigo-50">
+                    <h3 className="text-xl font-black text-indigo-900 flex items-center gap-2"><Edit3 /> 問卷內容與配分修改</h3>
+                    <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-indigo-100 rounded-full"><X /></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+                    {session.questions?.map((q, idx) => (
+                      <div key={idx} className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-indigo-300 transition-colors shadow-sm">
+                        {editingIndex === idx ? (
+                          <div className="space-y-4 animate-scale-in">
+                            <div>
+                               <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">題目敘述</label>
+                               <textarea className="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 ring-indigo-500/20" value={editForm.question} onChange={e=>setEditForm({...editForm, question: e.target.value})}/>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">正確答案 (選擇題 1-4)</label>
+                                <input type="text" className="w-full p-3 border rounded-xl text-sm outline-none" value={editForm.answer} onChange={e=>setEditForm({...editForm, answer: e.target.value})} placeholder="例如: 1"/>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">題目權重 (計分點數)</label>
+                                <input type="number" className="w-full p-3 border rounded-xl text-sm outline-none" value={editForm.weight} onChange={e=>setEditForm({...editForm, weight: Number(e.target.value)})}/>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 justify-end pt-2">
+                               <button onClick={() => setEditingIndex(null)} className="px-5 py-2 rounded-xl text-sm font-bold text-slate-400 bg-slate-50">取消</button>
+                               <button onClick={saveQuestionEdit} className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-indigo-600 shadow-md">儲存修改</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                               <div className="flex items-center gap-2 mb-2">
+                                  <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-md">Q{idx+1}</span>
+                                  <span className="text-[10px] text-slate-400">權重: {q.weight} 分 | 答案: {q.answer}</span>
+                               </div>
+                               <p className="text-sm font-bold text-slate-700 leading-relaxed">{q.question}</p>
+                            </div>
+                            <button onClick={()=> { setEditingIndex(idx); setEditForm({question: q.question, answer: q.answer, options: q.options || [], weight: q.weight || 20}); }} className="p-3 bg-slate-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                               <Edit3 size={16}/>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+               </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function AnalysisView({ session, answers, onBack, showToast, sessionCode, db }) {
+      const [isAnalyzing, setIsAnalyzing] = useState(false);
+      const [aiResult, setAiResult] = useState(session.aiAnalysis || null);
+
+      const stats = useMemo(() => {
+        const scores = answers.map(a => a.score || 0);
+        const submitted = answers.filter(a => a.status === 'submitted').length;
+        const totalWeight = session.questions.reduce((sum, q) => sum + (Number(q.weight) || 0), 0) || 100;
+        const qStats = session.questions.map((q, qIdx) => {
+          if (q.type !== 'choice') return { type: 'essay' };
+          const counts = {};
+          q.options.forEach(opt => counts[opt] = 0);
+          answers.forEach(a => {
+            const val = a.answers?.[qIdx];
+            if (val) counts[val] = (counts[val] || 0) + 1;
+          });
+          return { type: 'choice', counts, total: answers.length };
+        });
+        return { avg: scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : 0, count: answers.length, submitted, qStats, totalWeight };
+      }, [answers, session]);
+
+      const runAiAnalysis = async () => {
+        setIsAnalyzing(true);
+        try {
+          const prompt = `
+            你是 WEHS 保險行銷策略大師。
+            問卷題目：${JSON.stringify(session.questions)}
+            客戶填答數據與目前拜訪回饋：${JSON.stringify(answers.map(a => ({ id: a.studentId, name: a.studentName, answers: a.answers, feedback: a.visitFeedback })))}
+            
+            請根據以上數據：
+            1. 計算每位客戶的「成交機率」(0-100%)。
+            2. 給出「拜訪理由」(根據其填答的危機感、需求與購買意願)。
+            3. 給出「訴求重點」(面談時應強調什麼，如 75 歲後醫療、退休金等)。
+            4. 如果已有拜訪回饋，請分析回饋內容並動態調整「其他尚未拜訪客戶」的排序與訴求。
+            
+            請僅返回以下 JSON 格式：
+            { "rankings": [ { "studentId": "id", "probability": 95, "reason": "理由...", "focus": "訴求...", "adjustmentInfo": "調整參考..." } ] }
+          `;
+          
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          });
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          const cleanJson = text.replace(/```json|```/g, '').trim();
+          const result = JSON.parse(cleanJson);
+          
+          setAiResult(result);
+          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode), { aiAnalysis: result });
+          showToast('AI 成交分析已更新');
+        } catch (e) {
+          console.error(e);
+          showToast('AI 分析失敗，請稍後再試');
+        } finally {
+          setIsAnalyzing(false);
+        }
+      };
+
+      const updateFeedback = async (studentId, feedback) => {
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'answers', `${sessionCode}_${studentId}`);
+        await updateDoc(docRef, { visitFeedback: feedback });
+        showToast('拜訪回饋已儲存');
+      };
+
+      const sortedStudents = useMemo(() => {
+        if (!aiResult) return answers;
+        return [...answers].sort((a, b) => {
+          const rankA = aiResult.rankings.find(r => r.studentId === a.studentId)?.probability || 0;
+          const rankB = aiResult.rankings.find(r => r.studentId === b.studentId)?.probability || 0;
+          return rankB - rankA;
+        });
+      }, [answers, aiResult]);
+
+      return (
+        <div className="animate-scale-in space-y-6">
+          <div className="flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-[2rem] border shadow-sm">
+            <div>
+              <h2 className="text-2xl font-black">填答數據分析</h2>
+              <p className="text-xs text-slate-400">系統即時統計回傳結果</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={onBack} className="bg-slate-100 text-slate-600 px-6 py-2.5 rounded-xl font-bold text-sm transition-colors hover:bg-slate-200">返回管理</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+             <StatCard label="總填答數" value={stats.count} unit="人" icon={<Users size={16}/>} />
+             <StatCard label="平均分" value={stats.avg} unit={`/${stats.totalWeight}`} icon={<TrendingUp size={16}/>} color="indigo" />
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* 左側：問卷詳解 */}
+            <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm space-y-8 overflow-y-auto max-h-[1200px] custom-scrollbar">
+              <div className="flex justify-between items-center border-b pb-4">
+                <h3 className="text-lg font-bold">選項分佈詳解</h3>
+                <button 
+                  onClick={runAiAnalysis}
+                  disabled={isAnalyzing || answers.length === 0}
+                  className={`flex items-center gap-2 px-6 py-2 rounded-xl text-white font-black text-xs btn-quiz-action shadow-lg ${isAnalyzing ? 'bg-slate-400' : 'bg-indigo-600 shadow-indigo-100'}`}
+                >
+                  {isAnalyzing ? <RefreshCw className="animate-spin" size={14}/> : <BrainCircuit size={14}/>}
+                  成交機率 AI 分析
+                </button>
+              </div>
+              {session.questions.map((q, i) => q.type === 'choice' && (
+                <div key={i} className="space-y-4">
+                   <h4 className="text-sm font-bold text-slate-700">Q{i+1}. {q.question}</h4>
+                   <div className="space-y-3 pl-4 border-l-2 border-indigo-50">
+                     {q.options.map(opt => {
+                       const count = stats.qStats[i].counts[opt] || 0;
+                       const percent = stats.count ? Math.round(count / stats.count * 100) : 0;
+                       return (
+                         <div key={opt} className="space-y-1">
+                           <div className="flex justify-between text-[10px]">
+                             <span className={opt.startsWith(q.answer) ? 'text-emerald-600 font-bold' : 'text-slate-500'}>{opt}</span>
+                             <span>{count}人 ({percent}%)</span>
+                           </div>
+                           <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${opt.startsWith(q.answer) ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${percent}%` }}></div>
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 右側：成交分析名單 */}
+            <div className="space-y-6">
+               <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex flex-col h-full min-h-[800px]">
+                  <div className="flex items-center justify-between mb-6 border-b pb-4">
+                    <h3 className="text-lg font-bold flex items-center gap-2"><Target className="text-red-500"/> 成交機率優先拜訪排序</h3>
+                    <span className="text-[10px] text-slate-400">根據 AI 成交策略排序</span>
+                  </div>
+
+                  {!aiResult ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-300 text-center px-10">
+                      <BrainCircuit size={60} className="mb-4 opacity-20" />
+                      <p className="font-bold">尚未進行 AI 分析</p>
+                      <p className="text-xs">請點擊左側按鈕，讓 AI 為您規劃最佳拜訪順序</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6 overflow-y-auto custom-scrollbar flex-1 pr-2">
+                      {sortedStudents.map((s, idx) => {
+                        const rank = aiResult.rankings.find(r => r.studentId === s.studentId);
+                        return (
+                          <div key={s.id} className="bg-slate-50 rounded-[2rem] border-2 border-white shadow-sm p-6 space-y-4 hover:border-indigo-100 transition-all">
+                             <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-3">
+                                   <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-black text-indigo-600 shadow-sm">#{idx+1}</div>
+                                   <div>
+                                      <h4 className="font-black text-lg">{s.studentName}</h4>
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-24 bg-slate-200 rounded-full overflow-hidden">
+                                           <div className="h-full bg-emerald-500" style={{width: `${rank?.probability || 0}%`}}></div>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-emerald-600">{rank?.probability || 0}% 成交率</span>
+                                      </div>
+                                   </div>
+                                </div>
+                                <div className="text-[10px] bg-white px-3 py-1 rounded-full border font-bold text-slate-400">
+                                   問卷得分: {s.score || 0}
+                                </div>
+                             </div>
+
+                             <div className="grid grid-cols-1 gap-4">
+                               <div className="bg-white p-4 rounded-2xl text-xs border border-indigo-50">
+                                  <div className="font-bold text-indigo-600 mb-1 flex items-center gap-1"><MapPin size={12}/> 優先拜訪理由</div>
+                                  <p className="text-slate-600 leading-relaxed italic">"{rank?.reason || '計算中...'}"</p>
+                               </div>
+                               <div className="bg-white p-4 rounded-2xl text-xs border border-emerald-50">
+                                  <div className="font-bold text-emerald-600 mb-1 flex items-center gap-1"><Target size={12}/> 建議訴求重點</div>
+                                  <p className="text-slate-600 leading-relaxed">{rank?.focus || '計算中...'}</p>
+                               </div>
+                             </div>
+
+                             {rank?.adjustmentInfo && (
+                               <div className="px-4 py-2 bg-amber-50 rounded-xl text-[10px] text-amber-700 font-medium">
+                                 💡 AI 調節：{rank.adjustmentInfo}
+                               </div>
+                             )}
+
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 flex items-center gap-1 uppercase tracking-widest"><MessageSquare size={10}/> 實際拜訪回饋</label>
+                                <textarea 
+                                  className="w-full p-4 text-xs bg-white border rounded-2xl h-24 outline-none focus:ring-2 ring-indigo-100" 
+                                  placeholder="在此輸入拜訪後的真實回饋..."
+                                  defaultValue={s.visitFeedback || ""}
+                                  onBlur={(e) => updateFeedback(s.studentId, e.target.value)}
+                                />
+                             </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+               </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function StatCard({ label, value, unit, icon, color = "slate" }) {
+      const cls = { slate: "bg-slate-100 text-slate-600", emerald: "bg-emerald-100 text-emerald-600", indigo: "bg-indigo-100 text-indigo-600", amber: "bg-amber-100 text-amber-600" }[color];
+      return (
+        <div className="bg-white p-4 rounded-3xl border shadow-sm">
+           <div className="flex justify-between mb-2">
+              <span className="text-[10px] font-bold text-slate-400">{label}</span>
+              <div className={`p-1.5 rounded-lg ${cls}`}>{icon}</div>
+           </div>
+           <div className="flex items-baseline gap-1">
+             <span className="text-xl font-black">{value}</span>
+             <span className="text-[10px] text-slate-400">{unit}</span>
+           </div>
+        </div>
+      );
+    }
+
+    function TimerDisplay({ endTime, label }) {
+      const [t, setT] = useState(0);
+      useEffect(() => { if(!endTime) return; const tick = () => setT(Math.max(0, Math.floor((endTime - Date.now()) / 1000))); tick(); const i = setInterval(tick, 1000); return () => clearInterval(i); }, [endTime]);
+      if(!endTime) return <div className="px-3 py-1 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-bold border"><div className="opacity-50 text-[8px]">{label}</div><div>不設限</div></div>;
+      const m = Math.floor(t / 60), s = t % 60;
+      return <div className={`px-3 py-1 rounded-xl text-[10px] font-mono font-bold border shadow-inner ${t < 10 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-slate-50 text-slate-600'}`}><div className="opacity-50 text-[8px]">{label}</div><div>{m.toString().padStart(2,'0')}:{s.toString().padStart(2,'0')}</div></div>;
+    }
+
+    function StudentDashboard({ session, myData, onAnswer, onFinalSubmit }) {
+      const [idx, setIdx] = useState(0);
+      const [showCheck, setShowCheck] = useState(false);
+      const q = session.questions[idx];
+      const selected = myData?.answers?.[idx] || '';
+
+      useEffect(() => { if (session.status === 'sync_active') { setIdx(session.currentQuestionIndex); setShowCheck(false); } }, [session.currentQuestionIndex, session.status]);
+
+      if (session.status === 'lobby') return <div className="flex flex-col h-[60vh] items-center justify-center bg-white rounded-[3rem] text-center p-10 animate-pulse"><Clock size={60} className="text-indigo-100 mb-6" /><h2 className="text-xl font-black">等待業務開啟問卷...</h2></div>;
+
+      if (myData?.status === 'submitted') return (
+        <div className="max-w-xl mx-auto mt-20 p-10 bg-white rounded-[3rem] shadow-2xl text-center animate-scale-in">
+           <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} /></div>
+           <h2 className="text-2xl font-black">問卷已提交！</h2>
+           <p className="text-slate-400">我們將針對您的需求進行專業評估，謝謝您的填寫。</p>
+        </div>
+      );
+
+      if (showCheck) return (
+        <div className="max-w-xl mx-auto bg-white p-8 rounded-[2.5rem] shadow-xl animate-scale-in">
+           <h2 className="text-xl font-black mb-6 border-b pb-4">最後檢查回覆</h2>
+           <div className="space-y-3 mb-8">
+             {session.questions.map((q, i) => (
+               <div key={i} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center group cursor-pointer hover:bg-slate-100 transition-colors" onClick={()=>{setIdx(i); setShowCheck(false);}}>
+                 <div className="flex-1">
+                   <div className="text-[10px] font-bold text-indigo-500">Q {i+1}</div>
+                   <div className="text-sm font-bold text-slate-700 truncate max-w-[250px]">{myData?.answers?.[i] || '尚未填寫'}</div>
+                 </div>
+                 <Edit3 size={14} className="text-slate-300" />
+               </div>
+             ))}
+           </div>
+           <div className="flex gap-4">
+             <button onClick={()=>setShowCheck(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold transition-colors hover:bg-slate-200">返回編輯</button>
+             <button onClick={onFinalSubmit} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 btn-quiz-action">確認提交問卷</button>
+           </div>
+        </div>
+      );
+
+      return (
+        <div className="max-w-xl mx-auto space-y-6 animate-scale-in">
+          <div className="flex justify-between items-center bg-white px-6 py-3 rounded-2xl border shadow-sm">
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest tracking-widest">問題 {idx+1} / {session.questions.length}</span>
+             <div className="flex gap-2 items-center">
+                <TimerDisplay endTime={session.questionEndTime} label="單題"/>
+                <TimerDisplay endTime={session.totalEndTime} label="總時限"/>
+             </div>
+          </div>
+          <div className="bg-white rounded-[2.5rem] shadow-sm border overflow-hidden">
+             <div className="p-8 bg-slate-900 text-white"><h3 className="text-lg font-bold leading-relaxed">{q?.question}</h3></div>
+             <div className="p-8">
+               {q?.type === 'choice' ? (
+                 <div className="space-y-3">
+                   {q.options.map((opt, i) => (
+                     <button key={i} onClick={() => onAnswer(idx, opt)} className={`w-full p-5 rounded-2xl text-left font-bold transition-all border-2 ${selected === opt ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-4 ring-indigo-500/10' : 'border-slate-100 text-slate-600 hover:border-slate-300'}`}>
+                       <div className="flex items-center gap-3">
+                          <div className={`w-5 h-5 rounded-full border-2 ${selected === opt ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'} flex items-center justify-center`}>
+                             {selected === opt && <div className="w-2 h-2 rounded-full bg-white"></div>}
+                          </div>
+                          {opt}
+                       </div>
+                     </button>
+                   ))}
+                 </div>
+               ) : (
+                 <textarea value={selected} onChange={e=>onAnswer(idx, e.target.value)} className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] h-40 outline-none focus:border-indigo-500 transition-all" placeholder="請在此輸入您的回覆..."/>
+               )}
+             </div>
+          </div>
+          <div className="flex gap-4">
+             <button disabled={idx === 0 || session.status === 'sync_active'} onClick={()=>setIdx(idx-1)} className="flex-1 py-4 bg-white border text-slate-400 font-bold rounded-2xl disabled:opacity-30 transition-colors hover:bg-slate-50">上一題</button>
+             <button onClick={() => idx === session.questions.length - 1 ? setShowCheck(true) : setIdx(idx+1)} className="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-2xl btn-quiz-action shadow-lg shadow-indigo-100">
+               {idx === session.questions.length - 1 ? '檢查回覆' : '下一題'}
+             </button>
+          </div>
+        </div>
+      );
+    }
+
+    function ShieldCheck(props) { return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>; }
+    const copyToClipboard = (t) => { const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); document.body.removeChild(a); return true; };
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
