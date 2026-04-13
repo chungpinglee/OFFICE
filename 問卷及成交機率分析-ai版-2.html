@@ -674,7 +674,7 @@
                              const n = [...bulkEditQuestions]; n[idx].analysis = "正在診斷中..."; setBulkEditQuestions(n);
                              const prompt = `你是保險心理學專家，主要銷售「75歲後終身實支實付醫療險」。分析如何提高成交率：題目「${q.question}」。包含理論（如風險心理學等）。請嚴格遵循以下 HTML 格式輸出（不要使用 markdown，直接輸出文字包含標籤）：\n\n[理論分析內容]\n具體建議：<br><br><span class='text-indigo-600 font-bold'>【選1】</span> [訴求重點與對策]<br><span class='text-indigo-600 font-bold'>【選2】</span> [訴求重點與對策]<br><span class='text-indigo-600 font-bold'>【選3】</span> [訴求重點與對策]<br><span class='text-indigo-600 font-bold'>【選4】</span> [訴求重點與對策]<br><br><span class='text-red-500 font-bold'>⚠️ 應注意事項：</span>[重要提醒]`;
                              try {
-                               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                                  method: 'POST',
                                  headers: { 'Content-Type': 'application/json' },
                                  body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -1084,7 +1084,7 @@
         const prompt = `你是頂級保險銷售心理學專家，主力產品是「75歲以後的終身實支實付醫療險」。請針對以下客戶的真實問卷回答，進行深度精算與綜合建議：\n\n${qaText}\n請務必只以 JSON 格式輸出(不要加markdown block符號)。JSON 格式嚴格如下(注意：PERSONA、MBTI、DISC、心理地圖四大分析，每項文字請務必精簡，限制在100字以內)：\n{"qnaAnalysis": [{"qIndex": 0, "advice": "僅針對客戶選擇的答案，提供一步到位的實戰銷售對策與具體話術建議，不需要解釋其他沒選的選項", "precautions": "專屬該答案的核保或銷售應注意事項"}], "comprehensive": {"persona": "人物誌與輪廓描述(限100字內)", "mbti": "推測的MBTI類型與特質(限100字內)", "disc": "推測的DISC型態分析(限100字內)", "psychMap": "心理地圖與內在動機分析(限100字內)", "appealPoints": ["訴求重點1", "訴求重點2", "訴求重點3", "訴求重點4", "訴求重點5"], "precautions": ["大忌1", "大忌2", "大忌3", "大忌4", "大忌5"]}}`;
 
         try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, { 
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
