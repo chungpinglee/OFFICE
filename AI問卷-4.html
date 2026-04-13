@@ -328,6 +328,11 @@
           titleFontSize: 24,
           questionFontSize: DEFAULT_Q_FONT_SIZE,
           optionFontSize: DEFAULT_OPT_FONT_SIZE,
+          timeLimit: 0,
+          autoCloseUnit: 'none',
+          autoCloseValue: 1,
+          autoCloseTimestamp: null,
+          startedAt: null,
           questions: WEHS_DEFAULT_QUESTIONS,
           scoringMode: 'even',
           createdAt: Date.now(),
@@ -369,7 +374,11 @@
         setRole('student');
         
         if (!sessionData) {
-          setSessionData({ questions: WEHS_DEFAULT_QUESTIONS, status: 'lobby', quizTitleColor: DEFAULT_TITLE_COLOR, titleFontSize: 24, questionFontSize: 28, optionFontSize: 18 });
+          setSessionData({ 
+            questions: WEHS_DEFAULT_QUESTIONS, status: 'lobby', quizTitleColor: DEFAULT_TITLE_COLOR, 
+            titleFontSize: 24, questionFontSize: 28, optionFontSize: 18, timeLimit: 0, 
+            autoCloseUnit: 'none', autoCloseValue: 1, autoCloseTimestamp: null 
+          });
         }
         setAllAnswersData(prev => {
           if(!prev.find(p => p.studentId === studentId)) {
@@ -453,7 +462,6 @@
       };
 
       const callGeminiAPI = async (prompt, requireJson = false) => {
-        // 在內部環境測試時使用預覽模型，以繞過金鑰權限問題
         const activeKey = ""; 
         const modelName = "gemini-2.5-flash-preview-09-2025";
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
@@ -759,7 +767,9 @@
                      rows={3} value={session.quizTitle} onChange={e=>updateSession({quizTitle: e.target.value})} />
                 </div>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                   <button onClick={()=>updateSession({status: 'sync_active'})} 
+                   <button onClick={()=>{
+                      updateSession({status: 'sync_active', startedAt: Date.now()});
+                   }} 
                       className={`w-full sm:w-auto px-6 py-6 rounded-[2rem] font-black border-4 ${session.status === 'sync_active' ? 'btn-active-red' : 'btn-default-green'}`}>
                       啟動問卷
                    </button>
@@ -770,10 +780,9 @@
                 </div>
              </div>
 
-             {/* UI 自訂區域：顏色與大小拉桿 */}
              <div className="pt-8 border-t border-slate-100">
-               <h4 className="font-black text-lg flex items-center gap-2 mb-6 text-slate-800"><Icon name="Palette" size={20} className="text-indigo-500"/> 介面客製化設定</h4>
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+               <h4 className="font-black text-lg flex items-center gap-2 mb-6 text-slate-800"><Icon name="Settings" size={20} className="text-indigo-500"/> 介面客製化與參數設定</h4>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
                  
                  <div className="space-y-2">
                    <label className="text-sm font-bold text-slate-500 flex justify-between">主題顏色</label>
@@ -789,7 +798,40 @@
                    </label>
                    <input type="range" min="16" max="48" value={session.titleFontSize || 24} onChange={e=>updateSession({titleFontSize: Number(e.target.value)})} className="w-full" />
                  </div>
+               </div>
 
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                 <div className="space-y-2">
+                   <label className="text-sm font-bold text-slate-500 flex justify-between">
+                     單題時間限制 (秒) <span className="text-indigo-600">{!session.timeLimit || session.timeLimit === 0 ? '不限時' : `${session.timeLimit} 秒`}</span>
+                   </label>
+                   <input type="range" min="0" max="60" step="5" value={session.timeLimit || 0} onChange={e=>updateSession({timeLimit: Number(e.target.value)})} className="w-full" />
+                 </div>
+
+                 <div className="space-y-2">
+                   <label className="text-sm font-bold text-slate-500 flex justify-between">停止問卷時間設定</label>
+                   <div className="flex gap-2">
+                     <select 
+                       value={session.autoCloseUnit || 'none'} 
+                       onChange={e => updateSession({autoCloseUnit: e.target.value})} 
+                       className="w-1/2 p-2 border-2 border-slate-200 rounded-xl outline-none font-bold text-slate-600 focus:border-indigo-400"
+                     >
+                       <option value="none">不限時</option>
+                       <option value="minutes">分</option>
+                       <option value="hours">時</option>
+                       <option value="days">天</option>
+                     </select>
+                     {(session.autoCloseUnit && session.autoCloseUnit !== 'none') && (
+                       <input 
+                         type="number" min="1" 
+                         value={session.autoCloseValue || 1} 
+                         onChange={e => updateSession({autoCloseValue: Number(e.target.value)})} 
+                         className="w-1/2 p-2 border-2 border-slate-200 rounded-xl outline-none font-bold text-slate-600 focus:border-indigo-400" 
+                         placeholder="輸入數值" 
+                       />
+                     )}
+                   </div>
+                 </div>
                </div>
              </div>
           </div>
@@ -868,7 +910,7 @@
             0: "4. 不太好操作，建議改進 📝",
             1: "4. 不清楚，但我現在連基本醫療險都還沒買 🤷",
             2: "4. 完全不擔心，自認存款絕對足夠 😎",
-            3: "4. 無所謂，存錢本來針對是為了看醫生用的 🏦",
+            3: "4. 無所謂，存錢本來就是為了看醫生用的 🏦",
             4: "4. 目前沒有任何想增加的規劃 🛑",
             5: "4. 我沒有買保險，也不太相信保險 🚫",
             6: "4. 保險公司的品牌知名度與規模 🏢",
@@ -1235,19 +1277,27 @@ ${qaText}`;
                           
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
-                              <div className="text-[10px] font-black text-blue-400 mb-2 tracking-widest">PERSONA</div>
+                              <div className="text-[10px] font-black text-blue-400 mb-2 tracking-widest">
+                                <span className="theory-term" data-meaning={THEORY_DICTIONARY["PERSONA"]} title={THEORY_DICTIONARY["PERSONA"]}>PERSONA</span>
+                              </div>
                               <div className="text-xs md:text-sm font-bold text-slate-700">{existingAnalysis.comprehensive?.persona}</div>
                             </div>
                             <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
-                              <div className="text-[10px] font-black text-purple-400 mb-2 tracking-widest">MBTI</div>
+                              <div className="text-[10px] font-black text-purple-400 mb-2 tracking-widest">
+                                <span className="theory-term" data-meaning={THEORY_DICTIONARY["MBTI"]} title={THEORY_DICTIONARY["MBTI"]}>MBTI</span>
+                              </div>
                               <div className="text-xs md:text-sm font-bold text-slate-700">{existingAnalysis.comprehensive?.mbti}</div>
                             </div>
                             <div className="bg-amber-50 p-5 rounded-2xl border border-amber-100">
-                              <div className="text-[10px] font-black text-amber-500 mb-2 tracking-widest">DISC</div>
+                              <div className="text-[10px] font-black text-amber-500 mb-2 tracking-widest">
+                                <span className="theory-term" data-meaning={THEORY_DICTIONARY["DISC"]} title={THEORY_DICTIONARY["DISC"]}>DISC</span>
+                              </div>
                               <div className="text-xs md:text-sm font-bold text-slate-700">{existingAnalysis.comprehensive?.disc}</div>
                             </div>
                             <div className="bg-rose-50 p-5 rounded-2xl border border-rose-100">
-                              <div className="text-[10px] font-black text-rose-400 mb-2 tracking-widest">心理動機</div>
+                              <div className="text-[10px] font-black text-rose-400 mb-2 tracking-widest">
+                                <span className="theory-term" data-meaning={THEORY_DICTIONARY["心理地圖與動機"]} title={THEORY_DICTIONARY["心理地圖與動機"]}>心理動機</span>
+                              </div>
                               <div className="text-xs md:text-sm font-bold text-slate-700">{existingAnalysis.comprehensive?.psychMap}</div>
                             </div>
                           </div>
@@ -1335,15 +1385,73 @@ ${qaText}`;
 
     function StudentDashboard({ session, myData, onAnswer, onFinalSubmit }) {
       const [idx, setIdx] = useState(0);
+      const [timeLeft, setTimeLeft] = useState(session.timeLimit || 0);
+      const [isClosedByTime, setIsClosedByTime] = useState(false);
       const q = session.questions[idx];
       const selected = myData?.answers?.[idx] || '';
       const color = session.quizTitleColor || DEFAULT_TITLE_COLOR;
 
+      useEffect(() => {
+        setTimeLeft(session.timeLimit || 0);
+      }, [idx, session.timeLimit]);
+
+      useEffect(() => {
+        if (session.timeLimit && session.timeLimit > 0 && session.status !== 'lobby' && myData?.status !== 'submitted') {
+          const timer = setInterval(() => {
+            setTimeLeft(prev => {
+              if (prev <= 1) {
+                clearInterval(timer);
+                if (idx === session.questions.length - 1) {
+                  onFinalSubmit();
+                } else {
+                  if(!myData?.answers?.[idx]) {
+                     onAnswer(idx, '未作答(超時)');
+                  }
+                  setIdx(p => p + 1);
+                }
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+          return () => clearInterval(timer);
+        }
+      }, [idx, session.timeLimit, session.status, myData?.status, session.questions.length, myData?.answers, onAnswer, onFinalSubmit]);
+
+      useEffect(() => {
+        if (session.status === 'sync_active' && session.startedAt && session.autoCloseUnit && session.autoCloseUnit !== 'none') {
+            const val = session.autoCloseValue || 1;
+            let duration = 0;
+            if (session.autoCloseUnit === 'minutes') duration = val * 60000;
+            if (session.autoCloseUnit === 'hours') duration = val * 3600000;
+            if (session.autoCloseUnit === 'days') duration = val * 86400000;
+            
+            const timeElapsed = Date.now() - session.startedAt;
+            if (timeElapsed >= duration) {
+                setIsClosedByTime(true);
+            } else {
+                setIsClosedByTime(false);
+                const timer = setTimeout(() => setIsClosedByTime(true), duration - timeElapsed);
+                return () => clearTimeout(timer);
+            }
+        } else {
+            setIsClosedByTime(false);
+        }
+      }, [session.status, session.startedAt, session.autoCloseUnit, session.autoCloseValue]);
+
       if (session.status === 'lobby') return <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 bg-white rounded-[3rem] shadow-2xl border"><h2>問卷尚未啟動 🙌</h2></div>;
+      
+      if (isClosedByTime && myData?.status !== 'submitted') return <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 bg-white rounded-[3rem] shadow-2xl border"><h2>問卷已停止回應 ⏰</h2></div>;
+
       if (myData?.status === 'submitted') return <div className="max-w-xl mx-auto mt-20 p-16 bg-white rounded-[4rem] shadow-2xl text-center"><h2>填寫完成！✨</h2></div>;
 
       return (
-        <div className="max-w-2xl mx-auto space-y-8">
+        <div className="max-w-2xl mx-auto space-y-8 relative">
+          {session.timeLimit > 0 && (
+            <div className="absolute -top-12 right-0 bg-red-100 text-red-600 font-black px-4 py-2 rounded-full flex items-center gap-2 shadow-sm border border-red-200">
+              <Icon name="Timer" size={18} /> 剩餘 {timeLeft} 秒
+            </div>
+          )}
           <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden">
              <div className="p-8 pb-4" style={{ backgroundColor: `${color}10` }}>
                <h3 className="font-black" style={{ fontSize: `${session.questionFontSize}px` }}>{q?.question}</h3>
