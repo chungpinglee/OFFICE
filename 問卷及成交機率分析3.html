@@ -199,6 +199,15 @@
       const [showEditModal, setShowEditModal] = useState(false);
       const [bulkEditQuestions, setBulkEditQuestions] = useState([]);
       
+      // 新增：讀取網址參數，自動填入房間代碼，讓客戶點連結就能直接進入
+      useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const urlCode = params.get('code');
+        if (urlCode) {
+          setSessionCode(urlCode.toUpperCase());
+        }
+      }, []);
+
       // 新增：本機端儲存 API Key 狀態管理，預設帶入您提供的金鑰
       const [apiKey, setApiKey] = useState(() => {
         try { return localStorage.getItem('gemini_api_key') || defaultApiKey; } catch(e) { return defaultApiKey; }
@@ -614,12 +623,39 @@
       const isSync = session.status === 'sync_active';
       const isAsync = session.status === 'submission_mode';
 
+      // 新增：複製連結功能 (相容各平台限制)
+      const handleCopyLink = () => {
+        const url = `${window.location.origin}${window.location.pathname}?code=${code}`;
+        try {
+          const textArea = document.createElement("textarea");
+          textArea.value = url;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+          showToast('✅ 專屬連結已複製！請傳送給客戶');
+        } catch (err) {
+          showToast('複製失敗，請手動分享代碼：' + code);
+        }
+      };
+
       return (
         <div className="space-y-6 animate-in fade-in duration-500">
           <div className="flex flex-col sm:flex-row gap-4">
              <button onClick={onOpenEdit} className="flex-1 bg-white border-2 border-indigo-600 text-indigo-600 py-4 rounded-3xl font-black shadow-sm text-sm sm:text-base">修改問卷內容</button>
              <button onClick={onGoAnalysis} className="flex-1 bg-indigo-50 text-indigo-700 py-4 rounded-3xl font-black shadow-sm text-sm sm:text-base">策略決策面板</button>
              <button onClick={onExport} className="w-full sm:w-auto bg-slate-900 text-white px-8 py-4 rounded-3xl font-black shadow-xl text-sm sm:text-base">匯出備份檔</button>
+          </div>
+
+          {/* 新增：分享專屬連結區塊 */}
+          <div className="bg-indigo-50 p-6 md:p-8 rounded-[2.5rem] md:rounded-[3.5rem] border-2 border-indigo-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
+             <div className="text-center md:text-left">
+                <h3 className="text-indigo-900 font-black text-lg md:text-xl mb-2 flex items-center justify-center md:justify-start gap-2"><Icon name="Share2" size={20}/> 邀請客戶填寫</h3>
+                <p className="text-indigo-600/80 font-bold text-sm">客戶可輸入代碼 <span className="bg-white px-2 py-1 rounded-lg border text-indigo-700 mx-1">{code}</span> 或直接點擊專屬連結進入。</p>
+             </div>
+             <button onClick={handleCopyLink} className="w-full md:w-auto bg-indigo-600 text-white px-8 py-4 rounded-2xl md:rounded-3xl font-black shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3">
+               <Icon name="Link" size={20}/> 複製問卷連結
+             </button>
           </div>
           
           <div className="bg-white p-6 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] shadow-xl border border-slate-100 space-y-8">
@@ -650,13 +686,13 @@
                     <select className="flex-1 p-3 md:p-4 bg-slate-50 border-2 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold outline-none" value={session.perQuestionUnit || 'unlimited'} onChange={e=>updateSession({perQuestionUnit: e.target.value})}>
                       <option value="unlimited">單題不限</option><option value="seconds">秒</option><option value="minutes">分</option>
                     </select>
-                    {session.perQuestionUnit && session.perQuestionUnit !== 'unlimited' && <input type="number" className="w-20 p-2 bg-white border-2 rounded-xl text-center font-black" value={session.perQuestionValue || 60} onChange={e=>updateSession({perQuestionValue: Number(e.target.value)})} />}
+                    {session.perQuestionUnit && session.perQuestionUnit !== 'unlimited' && <input type="number" placeholder="數字" className="w-20 p-2 bg-white border-2 rounded-xl text-center font-black" value={session.perQuestionValue ?? ''} onChange={e=>updateSession({perQuestionValue: e.target.value === '' ? '' : Number(e.target.value)})} />}
                   </div>
                   <div className="flex gap-2">
                     <select className="flex-1 p-3 md:p-4 bg-slate-50 border-2 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold outline-none" value={session.totalQuizUnit || 'unlimited'} onChange={e=>updateSession({totalQuizUnit: e.target.value})}>
                       <option value="unlimited">總時不限</option><option value="minutes">分</option><option value="hours">時</option><option value="days">天</option>
                     </select>
-                    {session.totalQuizUnit && session.totalQuizUnit !== 'unlimited' && <input type="number" className="w-20 p-2 bg-white border-2 rounded-xl text-center font-black" value={session.totalQuizValue || 60} onChange={e=>updateSession({totalQuizValue: Number(e.target.value)})} />}
+                    {session.totalQuizUnit && session.totalQuizUnit !== 'unlimited' && <input type="number" placeholder="數字" className="w-20 p-2 bg-white border-2 rounded-xl text-center font-black" value={session.totalQuizValue ?? ''} onChange={e=>updateSession({totalQuizValue: e.target.value === '' ? '' : Number(e.target.value)})} />}
                   </div>
                 </div>
              </div>
