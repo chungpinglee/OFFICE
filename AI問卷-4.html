@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>AI問卷客戶屬性分析</title>
   
+  <meta property="og:title" content="AI問卷客戶屬性分析" />
+  <meta property="og:description" content="請讓我能更了解您的需求，並作為未來提供更優質、具體改進服務的參考 ✨" />
+  <meta property="og:type" content="website" />
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -731,13 +735,14 @@
 
       const handleCopyLink = () => {
         const url = `${window.location.origin}${window.location.pathname}?code=${code}`;
+        const shareText = `✨ 【AI問卷客戶屬性分析】\n邀請您協助填寫，請點選下方連結以開啟：\n${url}`;
         const textArea = document.createElement("textarea");
-        textArea.value = url;
+        textArea.value = shareText;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand("copy");
         document.body.removeChild(textArea);
-        showToast('✅ 連結已複製！');
+        showToast('✅ 邀請連結與訊息已複製！');
       };
 
       return (
