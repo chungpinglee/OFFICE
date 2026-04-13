@@ -135,7 +135,7 @@
       "雙碼理論": "指人類大腦同時利用語言（文字）與非語言（視覺）系統處理訊息，適度加入影像或 Emoji 能讓資訊更易吸收。",
       "風險心理學": "研究人類在面對未來不確定風險時的感知差異。成功的題目應有效觸發客戶內在的「不安感」以產生購買動機。",
       "損失規避": "行為經濟學指出，人們在面對同等數額的獲得和損失時，損失帶來的痛苦感通常是獲得所帶來快樂感的 2 倍以上。",
-      "銷售漏斗": "描述潛在客戶從獲取初步資訊到最終成交各階段的行為模型，用於篩選最精準的跟進對象。",
+      "銷售漏斗": "描述潛客戶從獲取初步資訊到最終成交各階段的行為模型，用於篩選最精準的跟進對象。",
       "錨點效應": "心理學現象，指人類在進行決策時，會過度依賴第一時間收到的資訊（即「錨點」）作為判斷基準。",
       "情感啟發法": "指人們在面對複雜決策時，傾向依賴當下的情緒反應與直覺，而非進行繁瑣的數據邏輯運算。"
     };
@@ -198,17 +198,17 @@
       const [codeOption, setCodeOption] = useState('fixed'); 
       const [showEditModal, setShowEditModal] = useState(false);
       const [bulkEditQuestions, setBulkEditQuestions] = useState([]);
+      const [isClientLink, setIsClientLink] = useState(false);
       
-      // 新增：讀取網址參數，自動填入房間代碼，讓客戶點連結就能直接進入
       useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const urlCode = params.get('code');
         if (urlCode) {
           setSessionCode(urlCode.toUpperCase());
+          setIsClientLink(true); 
         }
       }, []);
 
-      // 新增：本機端儲存 API Key 狀態管理，預設帶入您提供的金鑰
       const [apiKey, setApiKey] = useState(() => {
         try { return localStorage.getItem('gemini_api_key') || defaultApiKey; } catch(e) { return defaultApiKey; }
       });
@@ -383,7 +383,6 @@
         return <div className="font-msjh-black-large" dangerouslySetInnerHTML={{ __html: processed }} />;
       };
 
-      // 智慧引導 API 設定
       const checkApiKey = () => {
         if (!apiKey) {
           setShowSettings(true);
@@ -428,7 +427,7 @@
             ) : (
               <>
                 {!role && (
-                  <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 mt-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className={`mx-auto grid gap-8 mt-10 animate-in fade-in slide-in-from-bottom-4 duration-500 ${isClientLink ? 'max-w-md grid-cols-1' : 'max-w-4xl md:grid-cols-2'}`}>
                     <div className="bg-white p-8 md:p-12 rounded-[3.5rem] shadow-2xl border flex flex-col justify-center">
                       <div className="mb-8">
                         <h2 className="text-2xl md:text-3xl font-black mb-4 leading-tight" style={{ color: sessionData?.quizTitleColor || DEFAULT_TITLE_COLOR }}>
@@ -438,25 +437,28 @@
                       </div>
                       <div className="space-y-4">
                         <input type="text" placeholder="您的姓名" className="w-full p-5 bg-slate-50 border-2 rounded-3xl outline-none font-bold text-lg shadow-inner focus:bg-white transition-all" value={studentName} onChange={e=>setStudentName(e.target.value)} />
-                        <input type="text" placeholder="代碼" className="w-full p-5 bg-slate-50 border-2 rounded-3xl font-mono uppercase text-lg shadow-inner focus:bg-white transition-all" value={sessionCode} onChange={e=>setSessionCode(e.target.value)} />
+                        <input type="text" placeholder="代碼" className="w-full p-5 bg-slate-50 border-2 rounded-3xl font-mono uppercase text-lg shadow-inner focus:bg-white transition-all disabled:opacity-50 disabled:bg-slate-100" value={sessionCode} onChange={e=>setSessionCode(e.target.value)} disabled={isClientLink} />
                         {errorMsg && <p className="text-red-500 text-xs font-bold pl-4">{errorMsg}</p>}
                         <button onClick={()=>handleJoin(sessionCode, studentName)} className="w-full py-5 rounded-3xl text-white font-black text-xl shadow-xl transition-all" style={{ backgroundColor: sessionData?.quizTitleColor || DEFAULT_TITLE_COLOR }}>進入填答</button>
                       </div>
                     </div>
-                    <div className="bg-indigo-900 p-8 md:p-12 rounded-[3.5rem] text-white flex flex-col justify-center shadow-2xl relative overflow-hidden">
-                       <h2 className="text-2xl font-black mb-8 flex items-center gap-3 relative z-10"><Icon name="ShieldCheck" className="text-indigo-300"/> 業務決策端</h2>
-                       
-                       <div className="flex bg-indigo-800/50 p-2 rounded-2xl mb-4 relative z-10">
-                          <button onClick={() => setCodeOption('fixed')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${codeOption === 'fixed' ? 'bg-white text-indigo-900 shadow' : 'text-indigo-300'}`}>固定代碼 (1234)</button>
-                          <button onClick={() => setCodeOption('random')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${codeOption === 'random' ? 'bg-white text-indigo-900 shadow' : 'text-indigo-300'}`}>隨機產生</button>
-                       </div>
+                    
+                    {!isClientLink && (
+                      <div className="bg-indigo-900 p-8 md:p-12 rounded-[3.5rem] text-white flex flex-col justify-center shadow-2xl relative overflow-hidden">
+                         <h2 className="text-2xl font-black mb-8 flex items-center gap-3 relative z-10"><Icon name="ShieldCheck" className="text-indigo-300"/> 業務決策端</h2>
+                         
+                         <div className="flex bg-indigo-800/50 p-2 rounded-2xl mb-4 relative z-10">
+                            <button onClick={() => setCodeOption('fixed')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${codeOption === 'fixed' ? 'bg-white text-indigo-900 shadow' : 'text-indigo-300'}`}>固定代碼 (1234)</button>
+                            <button onClick={() => setCodeOption('random')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${codeOption === 'random' ? 'bg-white text-indigo-900 shadow' : 'text-indigo-300'}`}>隨機產生</button>
+                         </div>
 
-                       <button onClick={handleCreate} className="w-full bg-white text-indigo-900 font-black py-5 rounded-3xl shadow-xl mb-4 active:scale-95 transition-transform relative z-10">建立新會話</button>
-                       <label className="cursor-pointer bg-indigo-700 hover:bg-indigo-600 text-white text-center font-bold py-4 rounded-3xl text-xs flex items-center justify-center gap-2 border border-indigo-600 transition-all relative z-10">
-                         <Icon name="Upload" size={16}/> 匯入備份包 
-                         <input type="file" className="hidden" accept=".json" onChange={handleImportFullData} />
-                       </label>
-                    </div>
+                         <button onClick={handleCreate} className="w-full bg-white text-indigo-900 font-black py-5 rounded-3xl shadow-xl mb-4 active:scale-95 transition-transform relative z-10">建立新會話</button>
+                         <label className="cursor-pointer bg-indigo-700 hover:bg-indigo-600 text-white text-center font-bold py-4 rounded-3xl text-xs flex items-center justify-center gap-2 border border-indigo-600 transition-all relative z-10">
+                           <Icon name="Upload" size={16}/> 匯入備份包 
+                           <input type="file" className="hidden" accept=".json" onChange={handleImportFullData} />
+                         </label>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -523,7 +525,7 @@
             </div>
           )}
 
-          {/* 修改問卷內容 Modal (包含 RWD 優化) */}
+          {/* 修改問卷內容 Modal */}
           {showEditModal && (
             <div className="fixed inset-0 bg-slate-900/95 z-[500] flex items-center justify-center p-2 sm:p-4 backdrop-blur-md">
                <div className="bg-white w-full max-w-6xl h-[95vh] md:h-[92vh] rounded-[2rem] md:rounded-[3rem] flex flex-col shadow-2xl overflow-hidden border-4 md:border-8 border-white animate-in zoom-in-95">
@@ -623,7 +625,6 @@
       const isSync = session.status === 'sync_active';
       const isAsync = session.status === 'submission_mode';
 
-      // 新增：複製連結功能 (相容各平台限制)
       const handleCopyLink = () => {
         const url = `${window.location.origin}${window.location.pathname}?code=${code}`;
         try {
@@ -647,7 +648,6 @@
              <button onClick={onExport} className="w-full sm:w-auto bg-slate-900 text-white px-8 py-4 rounded-3xl font-black shadow-xl text-sm sm:text-base">匯出備份檔</button>
           </div>
 
-          {/* 新增：分享專屬連結區塊 */}
           <div className="bg-indigo-50 p-6 md:p-8 rounded-[2.5rem] md:rounded-[3.5rem] border-2 border-indigo-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
              <div className="text-center md:text-left">
                 <h3 className="text-indigo-900 font-black text-lg md:text-xl mb-2 flex items-center justify-center md:justify-start gap-2"><Icon name="Share2" size={20}/> 邀請客戶填寫</h3>
@@ -717,10 +717,101 @@
     }
 
     function AnalysisView({ session, answers, onBack, sessionCode, setSessionData, checkApiKey, renderAnalysisText, apiKey }) {
-      const [selectedStudentId, setSelectedStudentId] = useState(answers.length > 0 ? answers[0].studentId : null);
+      const [showMockData, setShowMockData] = useState(false);
+
+      // 本機預覽專用：5 位不同客群的假設範例
+      const MOCK_CUSTOMERS = useMemo(() => [
+        {
+          studentId: 'mock_hot', studentName: '王大明 (熱客範例)', status: 'submitted',
+          answers: {
+            0: "1. 非常方便，介面清晰 ✨",
+            1: "1. 非常清楚，這正是我擔心的缺口 😨",
+            2: "1. 非常擔憂，怕吃老本或拖累子女 😰",
+            3: "1. 完全無法接受，一定要提前把風險轉嫁給保險公司 🛡️",
+            4: "1. 確保 75 歲以後，依然有終身實支實付可以理賠 🏥",
+            5: "1. 不太確定保障到幾歲，非常需要請專人幫我做「保單健診」🔍",
+            6: "1. 保費是否在我能輕鬆負擔的預算內 💰",
+            7: "1. 希望盡快安排見面，立刻試算專屬方案 🏃‍♂️",
+            8: "1. 非常緊急！立刻幫我查我的保單到幾歲 🚨",
+            9: "我下週三有空，請帶建議書來找我。"
+          }
+        },
+        {
+          studentId: 'mock_rational', studentName: '林心如 (理智客範例)', status: 'submitted',
+          answers: {
+            0: "2. 還算流暢，可以接受 👌",
+            1: "2. 好像有聽說，但沒仔細看過自己的保單 🤔",
+            2: "2. 有點擔心，不知道退休金夠不夠付 😟",
+            3: "2. 很不想發生，但目前不知道該怎麼規劃 📉",
+            4: "1. 確保 75 歲以後，依然有終身實支實付可以理賠 🏥",
+            5: "2. 覺得目前保障足夠，但若有「終身型實支」的專案會想了解 💡",
+            6: "2. 理賠條款是否清晰、理賠額度是否夠高 📝",
+            7: "2. 想先看書面建議書，評估後再討論 📄",
+            8: "2. 滿重要的，有空約個時間幫我看看 📅",
+            9: "請先給我詳細的費率表和手術給付倍數表做比較。"
+          }
+        },
+        {
+          studentId: 'mock_hesitant', studentName: '陳建國 (猶豫客範例)', status: 'submitted',
+          answers: {
+            0: "3. 稍微複雜，需要一點時間 🌱",
+            1: "3. 完全不知道！以為會保一輩子 😲",
+            2: "3. 覺得還好，以後的事以後再說 😶",
+            3: "3. 無可奈何，生病了也只能花自己的錢 💸",
+            4: "3. 規劃意外險或其他基本保障 🛡️",
+            5: "3. 剛買完保險不久，暫時不想做任何調整 ⏳",
+            6: "3. 業務員的專業度、誠信與後續理賠服務 🤝",
+            7: "3. 先保留資訊，等未來有閒錢再說 ⏳",
+            8: "3. 好像該看，但最近很忙之後再說 🔔",
+            9: "目前預算不多，如果有便宜的方案再說。"
+          }
+        },
+        {
+          studentId: 'mock_defensive', studentName: '李小玲 (防備客範例)', status: 'submitted',
+          answers: {
+            0: "4. 不太好操作，建議改進 📝",
+            1: "4. 不清楚，但我現在連基本醫療險都還沒買 🤷",
+            2: "4. 完全不擔心，自認存款絕對足夠 😎",
+            3: "4. 無所謂，存錢本來就是為了看醫生用的 🏦",
+            4: "4. 目前沒有任何想增加的規劃 🛑",
+            5: "4. 我沒有買保險，也不太相信保險 🚫",
+            6: "4. 保險公司的品牌知名度與規模 🏢",
+            7: "4. 謝謝，目前完全沒有考慮 🛑",
+            8: "4. 沒必要，我相信我當初買的沒問題 📦",
+            9: "不需要提供服務，謝謝。"
+          }
+        },
+        {
+          studentId: 'mock_vip', studentName: '張總裁 (高資產範例)', status: 'submitted',
+          answers: {
+            0: "1. 非常方便，介面清晰 ✨",
+            1: "1. 非常清楚，這正是我擔心的缺口 😨",
+            2: "4. 完全不擔心，自認存款絕對足夠 😎",
+            3: "1. 完全無法接受，一定要提前把風險轉嫁給保險公司 🛡️",
+            4: "1. 確保 75 歲以後，依然有終身實支實付可以理賠 🏥",
+            5: "2. 覺得目前保障足夠，但若有「終身型實支」的專案會想了解 💡",
+            6: "3. 業務員的專業度、誠信與後續理賠服務 🤝",
+            7: "1. 希望盡快安排見面，立刻試算專屬方案 🏃‍♂️",
+            8: "1. 非常緊急！立刻幫我查我的保單到幾歲 🚨",
+            9: "我想要了解最高額度的單人病房實支實付，請準備頂級方案。"
+          }
+        }
+      ], []);
+
+      const displayAnswers = useMemo(() => {
+         return showMockData ? [...answers, ...MOCK_CUSTOMERS] : answers;
+      }, [answers, showMockData, MOCK_CUSTOMERS]);
+
+      const [selectedStudentId, setSelectedStudentId] = useState(displayAnswers.length > 0 ? displayAnswers[0].studentId : null);
       const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-      const selectedStudent = useMemo(() => answers.find(a => a.studentId === selectedStudentId), [answers, selectedStudentId]);
+      useEffect(() => {
+        if (!selectedStudentId || !displayAnswers.find(a => a.studentId === selectedStudentId)) {
+          setSelectedStudentId(displayAnswers.length > 0 ? displayAnswers[0].studentId : null);
+        }
+      }, [displayAnswers, selectedStudentId]);
+
+      const selectedStudent = useMemo(() => displayAnswers.find(a => a.studentId === selectedStudentId), [displayAnswers, selectedStudentId]);
       const existingAnalysis = session.detailedAnalysis?.[selectedStudentId];
 
       const runDetailedAi = async () => {
@@ -734,7 +825,7 @@
            qaText += `第${idx+1}題: ${q.question}\n客戶真實回答: ${ans}\n\n`;
         });
 
-        const prompt = `你是頂級保險銷售心理學專家，主力產品是「75歲以後的終身實支實付醫療險」。請針對以下客戶的真實問卷回答，進行深度精算與專屬策略擬定：\n\n${qaText}\n請務必只以 JSON 格式輸出(不要加markdown block符號)。JSON 格式嚴格如下：\n{"qnaAnalysis": [{"qIndex": 0, "advice": "針對此題回答的具體建議", "precautions": "應注意事項"}], "comprehensive": {"persona": "人物誌與輪廓描述", "mbti": "推測的MBTI類型與特質", "disc": "推測的DISC型態分析", "psychMap": "心理地圖與內在動機分析", "appealPoints": ["重點1", "重點2", "重點3", "重點4", "重點5"], "precautions": ["注意1", "注意2", "注意3", "注意4", "注意5"]}}`;
+        const prompt = `你是頂級保險銷售心理學專家，主力產品是「75歲以後的終身實支實付醫療險」。請針對以下客戶的真實問卷回答，進行深度精算與綜合建議：\n\n${qaText}\n請務必只以 JSON 格式輸出(不要加markdown block符號)。JSON 格式嚴格如下：\n{"qnaAnalysis": [{"qIndex": 0, "advice": "僅針對客戶選擇的答案，除原理論外，給予更深入的實戰銷售對策與話術建議", "precautions": "僅針對該答案的專屬應注意事項"}], "comprehensive": {"persona": "人物誌與輪廓描述", "mbti": "推測的MBTI類型與特質", "disc": "推測的DISC型態分析", "psychMap": "心理地圖與內在動機分析", "appealPoints": ["重點1", "重點2", "重點3", "重點4", "重點5"], "precautions": ["注意1", "注意2", "注意3", "注意4", "注意5"]}}`;
 
         try {
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, { 
@@ -746,7 +837,9 @@
           if (jsonMatch) {
             const result = JSON.parse(jsonMatch[0]);
             const newAnalysis = { ...(session.detailedAnalysis || {}), [selectedStudentId]: result };
-            if (window.fb) await window.fb.setDoc(window.fb.doc(window.fb.db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode), { detailedAnalysis: newAnalysis }, { merge: true });
+            if (window.fb) {
+              await window.fb.setDoc(window.fb.doc(window.fb.db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode), { detailedAnalysis: newAnalysis }, { merge: true });
+            }
             setSessionData(prev => ({ ...prev, detailedAnalysis: newAnalysis }));
           }
         } catch (e) {
@@ -764,14 +857,22 @@
           </div>
           
           <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
-            {/* 左側客戶選單 (RWD: 手機版改為橫向滑動或折疊) */}
+            {/* 左側客戶選單 */}
             <div className="w-full md:w-1/4 bg-white p-5 md:p-6 rounded-[2rem] md:rounded-[3rem] shadow-xl border flex flex-col shrink-0">
               <h3 className="text-lg font-black mb-4 flex items-center gap-2"><Icon name="Users" size={20} className="text-indigo-600"/> 選擇客戶</h3>
-              {answers.length === 0 ? (
+              
+              <button 
+                onClick={() => setShowMockData(!showMockData)}
+                className={`w-full mb-4 py-3 rounded-2xl font-bold text-sm transition-all border-2 flex justify-center items-center gap-2 ${showMockData ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100'}`}
+              >
+                {showMockData ? <><Icon name="Trash2" size={16}/> 移除範例資料</> : <><Icon name="UserPlus" size={16}/> 載入 5 筆範例</>}
+              </button>
+
+              {displayAnswers.length === 0 ? (
                 <div className="text-center text-slate-400 py-6 md:py-10 font-bold text-sm">尚未有客戶加入</div>
               ) : (
                 <div className="flex overflow-x-auto gap-3 pb-2 md:pb-0 md:flex-col md:overflow-y-auto md:space-y-3 custom-scrollbar pr-1">
-                  {answers.map(s => (
+                  {displayAnswers.map(s => (
                     <button key={s.studentId} onClick={() => setSelectedStudentId(s.studentId)} 
                       className={`shrink-0 w-40 md:w-full p-3 md:p-4 text-left rounded-[1.2rem] md:rounded-[1.5rem] font-bold transition-all border-2 ${selectedStudentId === s.studentId ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-slate-50 text-slate-700 border-transparent hover:bg-slate-100 hover:border-slate-200'}`}>
                       <div className="truncate text-sm md:text-base">{s.studentName}</div>
@@ -795,7 +896,7 @@
                     </div>
                     <button onClick={runDetailedAi} disabled={isAnalyzing} className="w-full sm:w-auto bg-indigo-600 text-white px-5 py-3 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-50">
                       {isAnalyzing ? <Icon name="RefreshCw" className="animate-spin" size={18}/> : <Icon name="BrainCircuit" size={18}/>} 
-                      {isAnalyzing ? "正在精算中..." : (existingAnalysis ? "重新分析此客戶" : "啟動 AI 深度精算")}
+                      {isAnalyzing ? "正在精算中..." : (existingAnalysis ? "重新綜合建議" : "綜合建議")}
                     </button>
                   </div>
 
@@ -806,7 +907,7 @@
                         <h4 className="text-lg md:text-xl font-black text-indigo-900">解鎖專屬綜合心理學剖析</h4>
                         <p className="text-sm md:text-base font-bold text-indigo-600 max-w-lg mx-auto leading-relaxed">
                           系統已為您自動載入下方各題的「內建分析參考」。<br/><br/>
-                          若需進一步整合該客戶的所有回答，精算其 <strong>PERSONA、MBTI、DISC 與心理地圖</strong>，請點擊右上方「啟動 AI 深度精算」按鈕。
+                          若需進一步整合該客戶的所有回答，精算其 <strong>PERSONA、MBTI、DISC 與心理地圖</strong>，請點擊右上方「綜合建議」按鈕。
                         </p>
                       </div>
                     )}
@@ -879,6 +980,45 @@
                               const ansStr = selectedStudent.answers[idx] || "客戶未回答此題";
                               const qnaData = existingAnalysis?.qnaAnalysis?.find(a => a.qIndex === idx);
                               
+                              // 智慧過濾內建文字，只顯示該選項的建議
+                              let theoryText = q.analysis || "尚無分析資料";
+                              let builtInAdvice = "";
+                              let builtInPrecautions = "";
+                              
+                              if (!qnaData && q.analysis) {
+                                  let optionsHtml = q.analysis;
+                                  
+                                  const parts = q.analysis.split(/<br><br><span class='text-red-500 font-bold'>⚠️ 應注意事項：<\/span>/);
+                                  builtInPrecautions = parts.length > 1 ? parts[1].trim() : "無特別注意事項";
+                                  
+                                  const topParts = parts[0].split('具體建議：<br><br>');
+                                  theoryText = topParts[0] + '具體建議：';
+                                  optionsHtml = topParts.length > 1 ? topParts[1] : parts[0];
+
+                                  let isChoice = false;
+                                  let optNum = "";
+                                  if (ansStr) {
+                                     const match = ansStr.match(/^(\d+)/);
+                                     if (match) { isChoice = true; optNum = match[1]; }
+                                  }
+
+                                  if (isChoice) {
+                                      const searchStr = `<span class='text-indigo-600 font-bold'>【選${optNum}】</span>`;
+                                      const startIndex = optionsHtml.indexOf(searchStr);
+                                      if (startIndex !== -1) {
+                                          let endIndex = optionsHtml.indexOf(`<br><span class='text-indigo-600 font-bold'>【選`, startIndex + searchStr.length);
+                                          if (endIndex === -1) endIndex = optionsHtml.length;
+                                          builtInAdvice = optionsHtml.substring(startIndex + searchStr.length, endIndex).trim();
+                                          if (builtInAdvice.endsWith('<br>')) builtInAdvice = builtInAdvice.slice(0, -4).trim();
+                                          builtInAdvice = `<span class='text-indigo-600 font-bold'>【針對選項 ${optNum}】</span> ${builtInAdvice}`;
+                                      } else {
+                                          builtInAdvice = optionsHtml;
+                                      }
+                                  } else {
+                                      builtInAdvice = optionsHtml;
+                                  }
+                              }
+
                               return (
                                 <div key={idx} className="bg-slate-50 p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-slate-200 shadow-sm">
                                   <div className="font-black text-slate-800 text-base md:text-lg mb-4 flex gap-2 md:gap-3 leading-snug">
@@ -891,19 +1031,27 @@
                                   {qnaData ? (
                                     <div className="grid md:grid-cols-2 gap-4 md:gap-6">
                                       <div>
-                                        <h6 className="text-[10px] md:text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">💡 AI 專屬客製化建議</h6>
+                                        <h6 className="text-[10px] md:text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">💡 AI 深入實戰對策</h6>
                                         <p className="text-xs md:text-sm font-bold text-slate-700 leading-relaxed bg-indigo-50 p-4 rounded-xl md:rounded-2xl">{qnaData.advice}</p>
                                       </div>
                                       <div>
-                                        <h6 className="text-[10px] md:text-xs font-black text-red-500 uppercase tracking-widest mb-2">⚠️ 應注意事項</h6>
+                                        <h6 className="text-[10px] md:text-xs font-black text-red-500 uppercase tracking-widest mb-2">⚠️ 專屬應注意事項</h6>
                                         <p className="text-xs md:text-sm font-bold text-slate-700 leading-relaxed bg-red-50 p-4 rounded-xl md:rounded-2xl">{qnaData.precautions}</p>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="bg-indigo-50/50 border border-indigo-100 p-4 md:p-6 rounded-xl md:rounded-2xl">
-                                      <h6 className="text-[10px] md:text-xs font-black text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="BookOpen" size={16}/> 系統內建分析參考</h6>
-                                      <div className="text-xs md:text-sm text-slate-700 leading-relaxed">
-                                        {renderAnalysisText(q.analysis)}
+                                    <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+                                      <div className="bg-indigo-50/50 border border-indigo-100 p-4 md:p-6 rounded-xl md:rounded-2xl">
+                                        <h6 className="text-[10px] md:text-xs font-black text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="BookOpen" size={16}/> 系統內建對策參考</h6>
+                                        <div className="text-xs md:text-sm text-slate-700 leading-relaxed">
+                                          {renderAnalysisText(`${theoryText}<br><br>${builtInAdvice}`)}
+                                        </div>
+                                      </div>
+                                      <div className="bg-red-50/50 border border-red-100 p-4 md:p-6 rounded-xl md:rounded-2xl">
+                                        <h6 className="text-[10px] md:text-xs font-black text-red-600 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="AlertOctagon" size={16}/> 應注意事項</h6>
+                                        <div className="text-xs md:text-sm font-bold text-slate-700 leading-relaxed">
+                                          {renderAnalysisText(builtInPrecautions)}
+                                        </div>
                                       </div>
                                     </div>
                                   )}
