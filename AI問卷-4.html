@@ -764,28 +764,9 @@
           </div>
           
           <div className="bg-white p-6 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] shadow-xl border border-slate-100 space-y-8">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
-                <div className="space-y-4">
-                   <textarea 
-                     className="w-full p-5 md:p-6 border-2 rounded-[1.5rem] md:rounded-[2rem] font-bold shadow-inner outline-none transition-all" 
-                     style={{ backgroundColor: `${session.quizTitleColor}15`, borderColor: `${session.quizTitleColor}40`, color: session.quizTitleColor, fontSize: `${session.titleFontSize || 24}px` }}
-                     rows={3} value={session.quizTitle} onChange={e=>updateSession({quizTitle: e.target.value})} />
-                </div>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                   <button onClick={()=>{
-                      updateSession({status: 'sync_active', startedAt: Date.now()});
-                   }} 
-                      className={`w-full sm:w-auto px-6 py-6 rounded-[2rem] font-black border-4 ${session.status === 'sync_active' ? 'btn-active-red' : 'btn-default-green'}`}>
-                      啟動問卷
-                   </button>
-                   <button onClick={()=>updateSession({status: 'lobby'})} 
-                      className={`w-full sm:w-auto px-6 py-6 rounded-[2rem] font-black border-4 ${session.status === 'lobby' ? 'btn-active-red' : 'bg-slate-500 text-white'}`}>
-                      停用問卷
-                   </button>
-                </div>
-             </div>
-
-             <div className="pt-8 border-t border-slate-100">
+             
+             {/* 介面客製化與參數設定 - 移至框架上方 */}
+             <div>
                <h4 className="font-black text-lg flex items-center gap-2 mb-6 text-slate-800"><Icon name="Settings" size={20} className="text-indigo-500"/> 介面客製化與參數設定</h4>
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
                  
@@ -839,6 +820,30 @@
                  </div>
                </div>
              </div>
+
+             {/* 問卷歡迎語與啟動設定 - 移至框架下方 */}
+             <div className="pt-8 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
+                <div className="space-y-4">
+                   <label className="text-sm font-bold text-slate-500 block mb-2">問卷歡迎語 / 說明文字</label>
+                   <textarea 
+                     className="w-full p-5 md:p-6 border-2 rounded-[1.5rem] md:rounded-[2rem] font-bold shadow-inner outline-none transition-all" 
+                     style={{ backgroundColor: `${session.quizTitleColor}15`, borderColor: `${session.quizTitleColor}40`, color: session.quizTitleColor, fontSize: `${session.titleFontSize || 24}px` }}
+                     rows={3} value={session.quizTitle} onChange={e=>updateSession({quizTitle: e.target.value})} />
+                </div>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 h-full">
+                   <button onClick={()=>{
+                      updateSession({status: 'sync_active', startedAt: Date.now()});
+                   }} 
+                      className={`w-full sm:w-auto px-6 py-6 rounded-[2rem] font-black border-4 ${session.status === 'sync_active' ? 'btn-active-red' : 'btn-default-green'}`}>
+                      啟動問卷
+                   </button>
+                   <button onClick={()=>updateSession({status: 'lobby'})} 
+                      className={`w-full sm:w-auto px-6 py-6 rounded-[2rem] font-black border-4 ${session.status === 'lobby' ? 'btn-active-red' : 'bg-slate-500 text-white'}`}>
+                      停用問卷
+                   </button>
+                </div>
+             </div>
+             
           </div>
 
           <div className="bg-white p-6 md:p-8 rounded-[2rem] border shadow-lg flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -1116,16 +1121,52 @@ ${qaText}`;
         try {
           const text = await callGeminiAPI(prompt, true);
           let cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0]);
+          let result = null;
+
+          try {
+            result = JSON.parse(cleanText);
+          } catch (e) {
+            const startIdx = cleanText.indexOf('{');
+            if (startIdx !== -1) {
+              let braceCount = 0;
+              let validEndIdx = -1;
+              let inString = false;
+              let escapeNext = false;
+              
+              for (let i = startIdx; i < cleanText.length; i++) {
+                const char = cleanText[i];
+                if (escapeNext) { escapeNext = false; continue; }
+                if (char === '\\') { escapeNext = true; continue; }
+                if (char === '"') { inString = !inString; }
+                
+                if (!inString) {
+                  if (char === '{') braceCount++;
+                  else if (char === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                      validEndIdx = i;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              if (validEndIdx !== -1) {
+                result = JSON.parse(cleanText.substring(startIdx, validEndIdx + 1));
+              } else {
+                throw new Error("無法找到完整的 JSON 結尾符號");
+              }
+            } else {
+              throw new Error("找不到 JSON 起始符號");
+            }
+          }
+
+          if (result) {
             const newAnalysis = { ...(session.detailedAnalysis || {}), [selectedStudentId]: result };
             if (window.fb && user && user.uid !== 'local_user') {
               await window.fb.setDoc(window.fb.doc(window.fb.db, 'artifacts', appId, 'public', 'data', 'sessions', sessionCode), { detailedAnalysis: newAnalysis }, { merge: true });
             }
             setSessionData(prev => ({ ...prev, detailedAnalysis: newAnalysis }));
-          } else {
-             throw new Error("無法解析出 JSON 結構，請重新嘗試");
           }
         } catch (e) {
           console.error("AI 分析錯誤:", e);
@@ -1172,12 +1213,34 @@ ${qaText}`;
             "  bodies.forEach(b => { b.classList.add('hidden'); });",
             "  headers.forEach((header, index) => {",
             "    header.addEventListener('click', () => {",
-            "      const body = bodies[index];",
-            "      const arrow = arrows[index];",
-            "      body.classList.toggle('hidden');",
-            "      arrow.classList.toggle('rotate-180');",
+            "      const isCurrentlyHidden = bodies[index].classList.contains('hidden');",
+            "      bodies.forEach((b, i) => { if(i !== index) b.classList.add('hidden'); });",
+            "      arrows.forEach((a, i) => { if(i !== index) a.classList.remove('rotate-180'); });",
+            "      if (isCurrentlyHidden) {",
+            "        bodies[index].classList.remove('hidden');",
+            "        arrows[index].classList.add('rotate-180');",
+            "      } else {",
+            "        bodies[index].classList.add('hidden');",
+            "        arrows[index].classList.remove('rotate-180');",
+            "      }",
+            "      isAllExpanded = false;",
+            "      if(toggleBtn) toggleBtn.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-expand\"><path d=\"m21 21-6-6m6 6v-4.8m0 4.8h-4.8M3 21l6-6m-6 6v-4.8m0 4.8h4.8M3 3l6 6M3 3v4.8M3 3h4.8m13.2 0-6 6m6-6v4.8m0-4.8h-4.8\"/></svg> <span>全部展開</span>';",
             "    });",
             "  });",
+            "  if(toggleBtn) {",
+            "    toggleBtn.addEventListener('click', () => {",
+            "      isAllExpanded = !isAllExpanded;",
+            "      if(isAllExpanded) {",
+            "        bodies.forEach(b => b.classList.remove('hidden'));",
+            "        arrows.forEach(a => a.classList.add('rotate-180'));",
+            "        toggleBtn.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-shrink\"><path d=\"m15 15 6 6m-6-6v4.8m0-4.8h4.8M9 15l-6 6m6-6v4.8m0-4.8H4.2M9 9 3 3M9 9V4.2M9 9H4.2m10.8 0 6-6m-6 6V4.2m0 4.8h4.8\"/></svg> <span>全部收合</span>';",
+            "      } else {",
+            "        bodies.forEach(b => b.classList.add('hidden'));",
+            "        arrows.forEach(a => a.classList.remove('rotate-180'));",
+            "        toggleBtn.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-expand\"><path d=\"m21 21-6-6m6 6v-4.8m0 4.8h-4.8M3 21l6-6m-6 6v-4.8m0 4.8h4.8M3 3l6 6M3 3v4.8M3 3h4.8m13.2 0-6 6m6-6v4.8m0-4.8h-4.8\"/></svg> <span>全部展開</span>';",
+            "      }",
+            "    });",
+            "  }",
             "});"
           ];
           injectedScript.innerHTML = jsLines.join('\n');
@@ -1270,7 +1333,7 @@ ${qaText}`;
                             <h4 className="text-lg md:text-xl font-black text-slate-800 flex items-center gap-2 border-l-4 border-emerald-500 pl-3">
                               <Icon name="Activity" className="text-emerald-500"/> 心理特質綜合分析
                             </h4>
-                            <div id="export-print-btns" className="flex gap-2 print:hidden">
+                            <div id="export-print-btns" className="flex gap-2 print:hidden shrink-0">
                               <button onClick={handleExportHTML} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-indigo-100 border border-indigo-100">
                                 <Icon name="Download" size={16}/> 另存 HTML
                               </button>
@@ -1336,9 +1399,18 @@ ${qaText}`;
 
                     {!isAnalyzing && (
                         <div className="space-y-6 pt-6 border-t-2 border-dashed border-slate-200 print:mt-8">
-                          <h4 className="text-lg md:text-xl font-black text-slate-800 flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
-                            <Icon name="ListChecks" className="text-indigo-500"/> 逐題解析與對策
-                          </h4>
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                            <h4 className="text-lg md:text-xl font-black text-slate-800 flex items-center gap-2 border-l-4 border-indigo-500 pl-3">
+                              <Icon name="ListChecks" className="text-indigo-500"/> 逐題解析與對策
+                            </h4>
+                            <button id="expand-collapse-btn" onClick={toggleExpandAll} className="print:hidden bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-xl text-sm font-bold flex items-center gap-1.5 hover:bg-indigo-200 border border-indigo-200 transition-colors shrink-0">
+                              {isAllExpanded ? (
+                                <><Icon name="Shrink" size={16}/> <span>全部收合</span></>
+                              ) : (
+                                <><Icon name="Expand" size={16}/> <span>全部展開</span></>
+                              )}
+                            </button>
+                          </div>
 
                           <div className="space-y-4">
                             {session.questions.map((q, idx) => {
@@ -1352,7 +1424,7 @@ ${qaText}`;
                                     <div className="font-black text-slate-800 text-sm md:text-base">
                                       <span className="text-indigo-500 mr-2">Q{idx+1}.</span> {q.question}
                                     </div>
-                                    <Icon name="ChevronDown" className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                    <Icon name="ChevronDown" className={`accordion-arrow text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                   </div>
                                   <div className={`accordion-body p-5 pt-0 ${isExpanded ? '' : 'hidden'}`}>
                                     <div className="bg-white p-3 rounded-xl border-l-4 border-emerald-500 text-emerald-700 font-bold text-sm mb-4">
